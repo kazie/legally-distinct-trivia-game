@@ -142,6 +142,7 @@ export class HostController {
           clueId: message.clueId,
           attempt: message.attempt,
           seq,
+          emoji: message.emoji,
         })
         return
       case 'wager':

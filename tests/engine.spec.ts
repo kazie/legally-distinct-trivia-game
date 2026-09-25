@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Board } from '@/content/schema'
 import { clueId, createGame, ddMaxWager, pickDailyDoubles, reduce, type Action } from '@/game/engine'
+import { BUZZ_EMOJIS, pickBuzzTarget } from '@/game/buzzPad'
 import { toPublicState } from '@/game/publicView'
 import type { GameState } from '@/game/types'
 
@@ -37,9 +38,12 @@ function started(): GameState {
 
 const score = (s: GameState, id: string) => s.players.find((p) => p.id === id)!.score
 
+/** The emoji every test opens buzzers with, unless it says otherwise. */
+const T = 4
+
 /** Opens buzzers for the current clue as if the host's message came back with `seq`. */
-function open(s: GameState, seq: number): GameState {
-  s = reduce(s, { type: 'openBuzzers' })
+function open(s: GameState, seq: number, target = T): GameState {
+  s = reduce(s, { type: 'openBuzzers', target })
   return reduce(s, { type: 'buzzersOpened', clueId: s.current!.id, attempt: s.current!.attempt, seq })
 }
 
@@ -64,8 +68,8 @@ describe('engine', () => {
     s = open(s, 10)
     s = run(
       s,
-      { type: 'buzz', playerId: 'p2', clueId: '0-1-0', attempt: 1, seq: 11 },
-      { type: 'buzz', playerId: 'p3', clueId: '0-1-0', attempt: 1, seq: 12 },
+      { type: 'buzz', playerId: 'p2', clueId: '0-1-0', attempt: 1, seq: 11, emoji: T },
+      { type: 'buzz', playerId: 'p3', clueId: '0-1-0', attempt: 1, seq: 12, emoji: T },
     )
     expect(s.current!.buzzWinner).toBe('p2')
     s = reduce(s, { type: 'judge', correct: false })
@@ -76,9 +80,9 @@ describe('engine', () => {
     // p2 is locked out; a buzz from the previous attempt is stale.
     s = run(
       s,
-      { type: 'buzz', playerId: 'p2', clueId: '0-1-0', attempt: 2, seq: 21 },
-      { type: 'buzz', playerId: 'p1', clueId: '0-1-0', attempt: 1, seq: 22 },
-      { type: 'buzz', playerId: 'p3', clueId: '0-1-0', attempt: 2, seq: 23 },
+      { type: 'buzz', playerId: 'p2', clueId: '0-1-0', attempt: 2, seq: 21, emoji: T },
+      { type: 'buzz', playerId: 'p1', clueId: '0-1-0', attempt: 1, seq: 22, emoji: T },
+      { type: 'buzz', playerId: 'p3', clueId: '0-1-0', attempt: 2, seq: 23, emoji: T },
     )
     expect(s.current!.buzzWinner).toBe('p3')
     s = reduce(s, { type: 'judge', correct: true })
@@ -95,16 +99,58 @@ describe('engine', () => {
     let s = run(started(), { type: 'selectClue', ref: { round: 0, category: 1, clue: 0 } })
     for (const [i, id] of ['p1', 'p2', 'p3'].entries()) {
       s = open(s, i * 10 + 1)
-      s = reduce(s, { type: 'buzz', playerId: id, clueId: '0-1-0', attempt: i + 1, seq: i * 10 + 2 })
+      s = reduce(s, { type: 'buzz', playerId: id, clueId: '0-1-0', attempt: i + 1, seq: i * 10 + 2, emoji: T })
       s = reduce(s, { type: 'judge', correct: false })
     }
     expect(s.current!.status).toBe('revealed')
   })
 
+  it('only accepts buzzes with the target emoji', () => {
+    let s = run(started(), { type: 'selectClue', ref: { round: 0, category: 0, clue: 0 } })
+    s = open(s, 10, 7)
+    expect(s.current!.target).toBe(7)
+    expect(reduce(s, { type: 'buzz', playerId: 'p1', clueId: '0-0-0', attempt: 1, seq: 11, emoji: 6 })).toBe(s)
+    s = reduce(s, { type: 'buzz', playerId: 'p2', clueId: '0-0-0', attempt: 1, seq: 12, emoji: 7 })
+    expect(s.current!.buzzWinner).toBe('p2')
+  })
+
+  it('rejects an invalid target and picks a new one per attempt', () => {
+    const s = run(started(), { type: 'selectClue', ref: { round: 0, category: 1, clue: 0 } })
+    expect(s.current!.target).toBeNull()
+    for (const target of [-1, 9, 1.5]) expect(reduce(s, { type: 'openBuzzers', target })).toBe(s)
+    let next = open(s, 10, 3)
+    next = run(next, { type: 'buzz', playerId: 'p1', clueId: '0-1-0', attempt: 1, seq: 11, emoji: 3 }, { type: 'judge', correct: false })
+    next = open(next, 20, 5)
+    expect(next.current!.target).toBe(5)
+  })
+
+  it('only shows the target to players while buzzers are opening or open', () => {
+    let s = run(started(), { type: 'selectClue', ref: { round: 0, category: 1, clue: 0 } })
+    s = reduce(s, { type: 'openBuzzers', target: 2 })
+    expect(toPublicState(s, 0).current!.target).toBe(2)
+    s = reduce(s, { type: 'buzzersOpened', clueId: '0-1-0', attempt: 1, seq: 1 })
+    expect(toPublicState(s, 0).current!.target).toBe(2)
+    s = reduce(s, { type: 'buzz', playerId: 'p1', clueId: '0-1-0', attempt: 1, seq: 2, emoji: 2 })
+    expect(toPublicState(s, 0).current!.target).toBeNull()
+    s = reduce(s, { type: 'judge', correct: false })
+    expect(toPublicState(s, 0).current!.target).toBeNull()
+  })
+
+  it('picks a buzz target that differs from the previous one', () => {
+    for (let prev = 0; prev < BUZZ_EMOJIS.length; prev++) {
+      for (const r of [0, 0.5, 0.999]) {
+        const t = pickBuzzTarget(prev, () => r)
+        expect(t).not.toBe(prev)
+        expect(t).toBeGreaterThanOrEqual(0)
+        expect(t).toBeLessThan(BUZZ_EMOJIS.length)
+      }
+    }
+  })
+
   it('ignores buzzes with a seq not after the open message', () => {
     let s = run(started(), { type: 'selectClue', ref: { round: 0, category: 0, clue: 0 } })
     s = open(s, 50)
-    expect(reduce(s, { type: 'buzz', playerId: 'p1', clueId: '0-0-0', attempt: 1, seq: 49 })).toBe(s)
+    expect(reduce(s, { type: 'buzz', playerId: 'p1', clueId: '0-0-0', attempt: 1, seq: 49, emoji: T })).toBe(s)
   })
 
   it('plays a Daily Double for the player in control with a clamped wager', () => {
@@ -119,7 +165,7 @@ describe('engine', () => {
     s = run(s, { type: 'setDdWager', id: 'p1', amount: 99999 }, { type: 'showDdClue' })
     expect(s.current!.value).toBe(200)
     expect(s.current!.buzzWinner).toBe('p1')
-    expect(reduce(s, { type: 'openBuzzers' })).toBe(s)
+    expect(reduce(s, { type: 'openBuzzers', target: T })).toBe(s)
     s = reduce(s, { type: 'judge', correct: false })
     expect(score(s, 'p1')).toBe(-150)
     expect(s.current!.status).toBe('revealed')
@@ -133,7 +179,7 @@ describe('engine', () => {
     s = open(s, 1)
     s = run(
       s,
-      { type: 'buzz', playerId: 'p1', clueId: clueId({ round: 1, category: 0, clue: 0 }), attempt: 1, seq: 2 },
+      { type: 'buzz', playerId: 'p1', clueId: clueId({ round: 1, category: 0, clue: 0 }), attempt: 1, seq: 2, emoji: T },
       { type: 'judge', correct: true },
       { type: 'adjustScore', id: 'p2', delta: 300 },
       { type: 'returnToBoard' },

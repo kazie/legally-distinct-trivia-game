@@ -5,7 +5,8 @@ import { createMemoryHistory } from 'vue-router'
 import { afterEach, describe, expect, it } from 'vitest'
 import StoryPlayer from '@/dev/StoryPlayer.vue'
 import StoryRoom from '@/dev/StoryRoom.vue'
-import { ANN, BOB, DEMO_ROOM, scenarioNames, type ScenarioName } from '@/dev/scenarios'
+import { ANN, BOB, DEMO_ROOM, DEMO_TARGET, scenarioNames, type ScenarioName } from '@/dev/scenarios'
+import { BUZZ_EMOJIS, STUN_MS } from '@/game/buzzPad'
 import { createAppRouter } from '@/router'
 import BoardView from '@/views/BoardView.vue'
 import HostView from '@/views/HostView.vue'
@@ -43,13 +44,17 @@ describe('story harness renders real screens', () => {
       h('div', { class: 'ann' }, [h(StoryPlayer, { playerId: ANN })]),
       h('div', { class: 'bob' }, [h(StoryPlayer, { playerId: BOB })]),
     ])
-    const buzz = w.find('.bob button.buzz')
-    expect(buzz.text()).toBe('BUZZ!')
-    await buzz.trigger('pointerdown')
+    expect(w.find('.target-emoji').text()).toBe(BUZZ_EMOJIS[DEMO_TARGET])
+    const pad = w.find('.bob .pad')
+    expect(pad.classes()).toContain('ready')
+    await pad.find(`button[data-index="${(DEMO_TARGET + 1) % BUZZ_EMOJIS.length}"]`).trigger('pointerdown')
+    expect(pad.classes()).toContain('stunned')
+    await settle(STUN_MS + 50)
+    await pad.find(`button[data-index="${DEMO_TARGET}"]`).trigger('pointerdown')
     await settle()
     expect(w.find('.banner').text()).toContain('Bob')
-    expect(w.find('.ann .answering').text()).toContain('Bob')
-    expect(w.find('.bob .answering').text()).toContain("YOU'RE UP!")
+    expect(w.find('.ann .pad').text()).toContain('Bob')
+    expect(w.find('.bob .pad').text()).toContain("YOU'RE UP!")
   })
 
   it('lets the host judge from the control panel', async () => {

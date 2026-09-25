@@ -1,4 +1,5 @@
 import type { Board } from '@/content/schema'
+import { isBuzzTarget } from './buzzPad'
 import type { ClueRef, CurrentClue, GameState, Player } from './types'
 
 export type Action =
@@ -15,9 +16,9 @@ export type Action =
   | { type: 'setDdPlayer'; id: string }
   | { type: 'setDdWager'; id: string; amount: number }
   | { type: 'showDdClue' }
-  | { type: 'openBuzzers' }
+  | { type: 'openBuzzers'; target: number }
   | { type: 'buzzersOpened'; clueId: string; attempt: number; seq: number }
-  | { type: 'buzz'; playerId: string; clueId: string; attempt: number; seq: number }
+  | { type: 'buzz'; playerId: string; clueId: string; attempt: number; seq: number; emoji: number }
   | { type: 'closeBuzzers' }
   | { type: 'judge'; correct: boolean }
   | { type: 'revealAnswer' }
@@ -243,6 +244,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
         value: clue.value,
         attempt: 0,
         openSeq: null,
+        target: null,
         buzzWinner: null,
         lockedOut: [],
         correctPlayer: null,
@@ -272,9 +274,11 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
 
     case 'openBuzzers':
       if (!cur || cur.dailyDouble || (cur.status !== 'reading' && cur.status !== 'closed')) return false
+      if (!isBuzzTarget(action.target)) return false
       cur.status = 'opening'
       cur.attempt += 1
       cur.openSeq = null
+      cur.target = action.target
       cur.buzzWinner = null
       return true
 
@@ -287,6 +291,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
     case 'buzz': {
       if (cur?.status !== 'open' || cur.id !== action.clueId || cur.attempt !== action.attempt) return false
       if (cur.openSeq === null || action.seq <= cur.openSeq) return false
+      if (action.emoji !== cur.target) return false
       if (!findPlayer(s, action.playerId) || cur.lockedOut.includes(action.playerId)) return false
       cur.status = 'answering'
       cur.buzzWinner = action.playerId

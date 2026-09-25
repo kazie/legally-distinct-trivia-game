@@ -18,5 +18,6 @@ import { ANN, BOB, CID, DEMO_ROOM, scenarioNames } from '@/dev/scenarios'
 # Host control panel
 
 The real `HostView`. It's fully interactive: Ann, Bob and Cid are bots that buzz when you open buzzers,
-wager on Daily Doubles, and play the final round. You can use the keyboard shortcuts too (Space, C, X, R, Enter, Z).
+wager on Daily Doubles, and play the final round. You can use the keyboard shortcuts too (Space, C, X, R, Enter, Z). The emoji players must tap shows next to
+"Buzzers open".
 </docs>

@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import BoardGrid from '@/components/BoardGrid.vue'
 import ConnectionBadge from '@/components/ConnectionBadge.vue'
 import JoinQr from '@/components/JoinQr.vue'
+import { BUZZ_EMOJIS, pickBuzzTarget } from '@/game/buzzPad'
 import { allBoards, type BoardEntry } from '@/content/boards'
 import { ddMaxWager, pickDailyDoubles, type Action } from '@/game/engine'
 import { HostController } from '@/game/hostController'
@@ -99,7 +100,7 @@ function onKey(event: KeyboardEvent) {
   const key = event.key.toLowerCase()
   if (key === 'z') return host.undo()
   if (!c) return
-  if ((key === ' ' || key === 'b') && (c.status === 'reading' || c.status === 'closed')) act({ type: 'openBuzzers' })
+  if ((key === ' ' || key === 'b') && (c.status === 'reading' || c.status === 'closed')) act({ type: 'openBuzzers', target: pickBuzzTarget(c.target) })
   else if (key === 'c' && c.status === 'answering') act({ type: 'judge', correct: true })
   else if (key === 'x' && c.status === 'answering') act({ type: 'judge', correct: false })
   else if (key === 'r' && c.status !== 'revealed') act({ type: 'revealAnswer' })
@@ -226,7 +227,7 @@ onUnmounted(() => {
         </div>
 
         <div v-else-if="cur.status === 'reading' || cur.status === 'closed'" class="row">
-          <button class="primary big" @click="act({ type: 'openBuzzers' })">
+          <button class="primary big" @click="act({ type: 'openBuzzers', target: pickBuzzTarget(cur.target) })">
             {{ cur.attempt === 0 ? 'Open buzzers' : 'Reopen buzzers' }} <kbd>Space</kbd>
           </button>
           <button @click="act({ type: 'revealAnswer' })">Nobody – reveal <kbd>R</kbd></button>
@@ -235,6 +236,7 @@ onUnmounted(() => {
 
         <div v-else-if="cur.status === 'opening' || cur.status === 'open'" class="row">
           <span class="waiting">{{ cur.status === 'opening' ? 'Opening…' : 'Buzzers open – waiting for a buzz…' }}</span>
+          <span v-if="cur.target !== null" class="target" title="Emoji players must tap">{{ BUZZ_EMOJIS[cur.target] }}</span>
           <span class="spacer" />
           <button @click="act({ type: 'closeBuzzers' })">Close buzzers</button>
           <button @click="act({ type: 'revealAnswer' })">Time's up – reveal <kbd>R</kbd></button>
@@ -422,6 +424,10 @@ onUnmounted(() => {
   font-size: 1rem;
   color: var(--muted);
   font-weight: 400;
+}
+.target {
+  font-size: 2rem;
+  line-height: 1;
 }
 .waiting {
   font-size: 1.2rem;

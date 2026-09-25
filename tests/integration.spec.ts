@@ -3,6 +3,7 @@ import sample from '../boards/sample.json'
 import { validateBoard, type Board } from '@/content/schema'
 import { BridgeClient } from '@/net/bridgeClient'
 import { HostController } from '@/game/hostController'
+import { STUN_MS } from '@/game/buzzPad'
 import { ClientController } from '@/game/clientController'
 import { FakeBridge, MemoryStorage, flush } from '@/dev/fakeBridge'
 
@@ -58,24 +59,25 @@ describe('host and players over the bridge', () => {
     expect(bob.state.value?.current?.text).toBe('The planet known as the Red Planet')
     expect(bob.canBuzz.value).toBe(false)
 
-    host.dispatch({ type: 'openBuzzers' })
+    host.dispatch({ type: 'openBuzzers', target: 3 })
     await flush()
     expect(host.state.value.current?.status).toBe('open')
     expect(bob.canBuzz.value).toBe(true)
 
     // Bob's buzz reaches the bridge first, so Bob wins even though Cid also buzzed.
-    bob.buzz()
-    cid.buzz()
+    expect(bob.press(3)).toBe('buzzed')
+    expect(cid.press(3)).toBe('buzzed')
     await flush()
     expect(host.state.value.current?.buzzWinner).toBe(bob.playerId)
     expect(ann.buzzWinnerName.value).toBe('Bob')
     expect(cid.buzzWinnerName.value).toBe('Bob')
 
     host.dispatch({ type: 'judge', correct: false })
-    host.dispatch({ type: 'openBuzzers' })
+    host.dispatch({ type: 'openBuzzers', target: 5 })
     await flush()
     expect(bob.canBuzz.value).toBe(false)
-    cid.buzz()
+    expect(bob.press(5)).toBe('ignored')
+    cid.press(5)
     await flush()
     host.dispatch({ type: 'judge', correct: true })
     await flush()
@@ -87,6 +89,53 @@ describe('host and players over the bridge', () => {
     await flush()
     expect(ann.state.value?.current?.status).toBe('answering')
     expect(ann.state.value?.players.map((p) => p.score)).toEqual([0, -200, 0])
+  })
+
+  it('stuns a player for a wrong emoji or an early tap, without sending a buzz', async () => {
+    const { host, player } = setup()
+    const [ann, bob] = [player(1), player(2)]
+    await flush()
+    ann.join('Ann')
+    bob.join('Bob')
+    await flush()
+    host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
+    host.dispatch({ type: 'startGame' })
+    host.dispatch({ type: 'selectClue', ref: { round: 0, category: 0, clue: 0 } })
+    await flush()
+
+    // Too early: buzzers aren't open yet.
+    expect(ann.press(0)).toBe('stunned')
+    expect(ann.stunned.value).toBe(true)
+    expect(ann.press(0)).toBe('ignored')
+    await new Promise((r) => setTimeout(r, STUN_MS + 30))
+    expect(ann.stunned.value).toBe(false)
+
+    host.dispatch({ type: 'openBuzzers', target: 6 })
+    await flush()
+    expect(ann.press(1)).toBe('stunned')
+    expect(ann.canBuzz.value).toBe(false)
+    // Still stunned: even the right emoji does nothing, so Bob gets in first.
+    expect(ann.press(6)).toBe('ignored')
+    expect(bob.press(6)).toBe('buzzed')
+    await flush()
+    expect(host.state.value.current?.buzzWinner).toBe(bob.playerId)
+  })
+
+  it('does not let a wrong emoji win even if a client sends it', async () => {
+    const { host, player } = setup()
+    const ann = player(1)
+    await flush()
+    ann.join('Ann')
+    await flush()
+    host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
+    host.dispatch({ type: 'startGame' })
+    host.dispatch({ type: 'selectClue', ref: { round: 0, category: 0, clue: 0 } })
+    host.dispatch({ type: 'openBuzzers', target: 2 })
+    await flush()
+    const cur = ann.state.value!.current!
+    ann['send']({ type: 'buzz', from: 'player', playerId: ann.playerId, clueId: cur.id, attempt: cur.attempt, emoji: 4 })
+    await flush()
+    expect(host.state.value.current?.status).toBe('open')
   })
 
   it('handles Daily Double and final wagers sent by players', async () => {

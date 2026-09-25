@@ -5,6 +5,7 @@ import ClueText from '@/components/ClueText.vue'
 import ConnectionBadge from '@/components/ConnectionBadge.vue'
 import JoinQr from '@/components/JoinQr.vue'
 import Scoreboard from '@/components/Scoreboard.vue'
+import { BUZZ_EMOJIS } from '@/game/buzzPad'
 import { ClientController } from '@/game/clientController'
 import { useBridge } from '@/net/useBridge'
 import { beep } from '@/sound'
@@ -89,6 +90,10 @@ onUnmounted(() => client.stop())
         <div v-if="cur.status === 'answering'" class="banner">
           {{ buzzWinnerName }}
           <small>{{ cur.dailyDouble ? `Daily Double for ${cur.value}` : 'buzzed in!' }}</small>
+        </div>
+        <div v-else-if="cur.status === 'open' && cur.target !== null" class="target">
+          <span class="target-emoji">{{ BUZZ_EMOJIS[cur.target] }}</span>
+          <small class="gold">Tap it to buzz!</small>
         </div>
         <div v-else-if="cur.status === 'open'" class="hint gold">Buzzers open!</div>
         <div v-else-if="cur.status === 'revealed'" class="answer">
@@ -260,5 +265,23 @@ onUnmounted(() => client.stop())
     transform: scale(0.7);
     opacity: 0;
   }
+}
+.target {
+  display: grid;
+  justify-items: center;
+  line-height: 1;
+}
+.target-emoji {
+  font-size: 9em;
+  animation: pop 0.25s ease-out;
+}
+.target small {
+  font-size: 1.6em;
+  font-weight: 700;
+  margin-top: 0.3em;
+}
+@keyframes pop {
+  from { transform: scale(0.4); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
 }
 </style>

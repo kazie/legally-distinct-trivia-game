@@ -48,6 +48,8 @@ function midRound(): GameState {
 
 const CLUE = { round: 0, category: 2, clue: 2 } // Food & Drink, 600
 const CLUE_ID = '0-2-2'
+/** The emoji (index into BUZZ_EMOJIS) players must tap in the scenarios. */
+export const DEMO_TARGET = 2
 
 function clue(): GameState {
   return run(midRound(), [{ type: 'selectClue', ref: CLUE }])
@@ -55,9 +57,9 @@ function clue(): GameState {
 
 function answering(by = BOB): GameState {
   return run(clue(), [
-    { type: 'openBuzzers' },
+    { type: 'openBuzzers', target: DEMO_TARGET },
     { type: 'buzzersOpened', clueId: CLUE_ID, attempt: 1, seq: 1 },
-    { type: 'buzz', playerId: by, clueId: CLUE_ID, attempt: 1, seq: 2 },
+    { type: 'buzz', playerId: by, clueId: CLUE_ID, attempt: 1, seq: 2, emoji: DEMO_TARGET },
   ])
 }
 
@@ -79,7 +81,7 @@ export const scenarios = {
   Lobby: () => ({ state: lobby() }),
   Board: () => ({ state: midRound() }),
   'Clue: reading': () => ({ state: clue() }),
-  'Clue: buzzers open': () => ({ state: clue(), live: [{ type: 'openBuzzers' }] }),
+  'Clue: buzzers open': () => ({ state: clue(), live: [{ type: 'openBuzzers', target: DEMO_TARGET }] }),
   'Clue: Bob answering': () => ({ state: answering(BOB) }),
   'Clue: Ann answering': () => ({ state: answering(ANN) }),
   'Clue: Bob was wrong': () => ({ state: run(answering(BOB), [{ type: 'judge', correct: false }]) }),

@@ -42,8 +42,10 @@ The bridge URL defaults to `ws://<page host>:8080/ws`. To use another one, set `
 
 1. **Lobby:** the host picks a board. Players join with a name.
 2. **Board:** the host picks a clue, usually the one named by the player in control (★).
-3. **Clue:** the host reads it, then presses **Open buzzers** (Space). The first buzz wins, and that player's
-   name goes up on the board screen and on every phone.
+3. **Clue:** the host reads it, then presses **Open buzzers** (Space). The board screen shows a random emoji,
+   and players buzz by tapping that emoji on the 3×3 pad on their phone. The pad is the same for everyone. A
+   wrong emoji, or a tap before buzzers open, stuns the player for 200 ms. The first correct buzz wins, and
+   that player's name goes up on the board screen and on every phone.
 4. **Judge:** **Correct** (C) adds the value and hands over control. **Incorrect** (X) subtracts it, locks
    that player out of this clue, and lets the host reopen buzzers for everyone else. **Reveal** (R) shows
    the answer when nobody gets it. **Enter** goes back to the board. **Z** undoes the last host action.

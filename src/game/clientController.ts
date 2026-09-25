@@ -1,5 +1,6 @@
 import { computed, ref, shallowRef } from 'vue'
 import type { BridgeClient, ConnectionStatus } from '@/net/bridgeClient'
+import { STUN_MS } from './buzzPad'
 import { decode, encode, type OutgoingMessage } from '@/net/protocol'
 import type { KeyValueStorage } from './hostController'
 import { roomTopic } from './roomCode'
@@ -10,6 +11,9 @@ export const PING_MS = 5000
 export const HOST_TIMEOUT_MS = 8000
 
 export type ClientRole = 'player' | 'board'
+
+/** What a tap on the buzz pad did. */
+export type PressResult = 'buzzed' | 'stunned' | 'ignored'
 
 export interface ClientControllerOptions {
   bridge: BridgeClient
@@ -39,6 +43,9 @@ export class ClientController {
   /** Set from the `buzzers_open` message so the button lights up without waiting for the next snapshot. */
   private readonly openedLocally = shallowRef<{ clueId: string; attempt: number } | null>(null)
   private readonly buzzedFor = shallowRef<{ clueId: string; attempt: number } | null>(null)
+  /** Briefly true after tapping the wrong emoji or tapping before buzzers open. */
+  readonly stunned = ref(false)
+  private stunTimer: ReturnType<typeof setTimeout> | null = null
 
   private readonly bridge: BridgeClient
   private readonly topic: string
@@ -60,12 +67,17 @@ export class ClientController {
     return cur.status === 'opening' && local?.clueId === cur.id && local.attempt === cur.attempt
   })
 
+  /** Whether this player has already buzzed in the current attempt. */
+  readonly hasBuzzed = computed(() => {
+    const cur = this.state.value?.current
+    const buzzed = this.buzzedFor.value
+    return !!cur && buzzed?.clueId === cur.id && buzzed.attempt === cur.attempt
+  })
+
   readonly canBuzz = computed(() => {
     const cur = this.state.value?.current
-    if (!cur || !this.me.value || !this.buzzersOpen.value) return false
-    if (cur.lockedOut.includes(this.playerId)) return false
-    const buzzed = this.buzzedFor.value
-    return !(buzzed?.clueId === cur.id && buzzed.attempt === cur.attempt)
+    if (!cur || !this.me.value || !this.buzzersOpen.value || this.stunned.value) return false
+    return !cur.lockedOut.includes(this.playerId) && !this.hasBuzzed.value
   })
 
   constructor(options: ClientControllerOptions) {
@@ -99,6 +111,9 @@ export class ClientController {
   }
 
   stop(): void {
+    if (this.stunTimer) clearTimeout(this.stunTimer)
+    this.stunTimer = null
+    this.stunned.value = false
     this.timers.forEach(clearInterval)
     this.timers = []
     this.cleanups.forEach((fn) => fn())
@@ -119,11 +134,22 @@ export class ClientController {
     this.storage?.removeItem(joinedKey(this.roomCode))
   }
 
-  buzz(): boolean {
+  /**
+   * A tap on the buzz pad. The right emoji while buzzers are open buzzes in; the wrong emoji, or any tap
+   * before buzzers open, stuns for STUN_MS. Taps that can't matter (locked out, someone answering…) do nothing.
+   */
+  press(emoji: number): PressResult {
     const cur = this.state.value?.current
-    if (!cur || !this.canBuzz.value) return false
+    if (!cur || !this.me.value || cur.dailyDouble || this.stunned.value) return 'ignored'
+    if (cur.status !== 'reading' && cur.status !== 'closed' && cur.status !== 'opening' && cur.status !== 'open') return 'ignored'
+    if (cur.lockedOut.includes(this.playerId) || this.hasBuzzed.value) return 'ignored'
+    if (!this.buzzersOpen.value || emoji !== cur.target) {
+      this.stun()
+      return 'stunned'
+    }
     this.buzzedFor.value = { clueId: cur.id, attempt: cur.attempt }
-    return this.send({ type: 'buzz', from: 'player', playerId: this.playerId, clueId: cur.id, attempt: cur.attempt })
+    this.send({ type: 'buzz', from: 'player', playerId: this.playerId, clueId: cur.id, attempt: cur.attempt, emoji })
+    return 'buzzed'
   }
 
   wager(kind: 'daily' | 'final', amount: number): boolean {
@@ -143,6 +169,14 @@ export class ClientController {
   remainingMs(hostDeadline: number | null): number | null {
     if (hostDeadline === null) return null
     return Math.max(0, hostDeadline - (this.clock.value + this.clockOffset.value))
+  }
+
+  private stun() {
+    this.stunned.value = true
+    this.stunTimer = setTimeout(() => {
+      this.stunned.value = false
+      this.stunTimer = null
+    }, STUN_MS)
   }
 
   private greet() {

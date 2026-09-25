@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import BuzzPad, { type BuzzPadMode } from '@/components/BuzzPad.vue'
 import ConnectionBadge from '@/components/ConnectionBadge.vue'
 import Scoreboard from '@/components/Scoreboard.vue'
 import { ClientController } from '@/game/clientController'
@@ -10,7 +11,7 @@ const props = defineProps<{ room: string }>()
 
 const { local, session } = useStorages()
 const client = new ClientController({ bridge: useBridge(), roomCode: props.room, role: 'player', storage: session })
-const { state, me, connection, hostOnline, joinedName, canBuzz, buzzWinnerName } = client
+const { state, me, connection, hostOnline, joinedName, canBuzz, hasBuzzed, stunned, buzzWinnerName } = client
 
 const nameInput = ref(joinedName.value ?? local?.getItem(LAST_NAME_KEY) ?? '')
 const wagerInput = ref<number | null>(null)
@@ -32,9 +33,32 @@ function join() {
   client.join(nameInput.value)
 }
 
-function buzz() {
-  if (client.buzz()) navigator.vibrate?.(30)
+const stunReason = ref('')
+
+function press(emoji: number) {
+  const early = !client.buzzersOpen.value
+  const result = client.press(emoji)
+  if (result === 'buzzed') navigator.vibrate?.(30)
+  if (result === 'stunned') {
+    stunReason.value = early ? 'Too early!' : 'Wrong emoji!'
+    navigator.vibrate?.(60)
+  }
 }
+
+const pad = computed((): { mode: BuzzPadMode; label: string | null; sublabel: string | null } => {
+  const c = cur.value
+  if (!c || c.status === 'revealed') return { mode: 'done', label: null, sublabel: null }
+  if (c.status === 'answering') {
+    return isMe(c.buzzWinner)
+      ? { mode: 'mine', label: "YOU'RE UP!", sublabel: 'Say your answer' }
+      : { mode: 'answering', label: buzzWinnerName.value, sublabel: 'is answering' }
+  }
+  if (c.lockedOut.includes(client.playerId)) return { mode: 'locked', label: 'Locked out', sublabel: null }
+  if (stunned.value) return { mode: 'stunned', label: stunReason.value, sublabel: null }
+  if (hasBuzzed.value) return { mode: 'buzzed', label: 'Buzzed…', sublabel: null }
+  if (canBuzz.value) return { mode: 'ready', label: null, sublabel: null }
+  return { mode: 'waiting', label: 'Get ready…', sublabel: 'Tap the emoji shown on the TV' }
+})
 
 function sendWager(kind: 'daily' | 'final') {
   if (wagerInput.value === null || !Number.isFinite(wagerInput.value)) return
@@ -61,11 +85,13 @@ watch(
   },
 )
 
+/** Keys 1–9 tap the pad row by row (handy when testing on a laptop). */
 function onKey(event: KeyboardEvent) {
-  if (event.code === 'Space' && !(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)) {
-    event.preventDefault()
-    buzz()
-  }
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
+  const digit = /^Digit([1-9])$|^Numpad([1-9])$/.exec(event.code)
+  if (!digit || cur.value?.dailyDouble || phase.value !== 'clue') return
+  event.preventDefault()
+  press(Number(digit[1] ?? digit[2]) - 1)
 }
 
 onMounted(() => {
@@ -142,29 +168,19 @@ onUnmounted(() => {
           <p v-else class="big">{{ client.nameOf(cur.ddPlayer) ?? 'Someone' }} is placing a wager…</p>
         </div>
 
-        <div v-else-if="cur.status === 'answering'" class="answering" :class="{ mine: isMe(cur.buzzWinner) }">
+        <div v-else-if="cur.dailyDouble && cur.status === 'answering'" class="answering" :class="{ mine: isMe(cur.buzzWinner) }">
           <template v-if="isMe(cur.buzzWinner)">YOU'RE UP!<small>Say your answer</small></template>
           <template v-else>{{ buzzWinnerName }}<small>is answering</small></template>
         </div>
 
-        <div v-else-if="cur.status === 'revealed'" class="panel center">
+        <!-- Stays mounted (and the same size) for the whole clue, so nothing jumps between states. -->
+        <BuzzPad v-else-if="!cur.dailyDouble" :mode="pad.mode" :label="pad.label" :sublabel="pad.sublabel" @press="press" />
+
+        <div v-if="cur.status === 'revealed'" class="panel center">
           <div class="muted">Answer</div>
           <p class="big gold serif">{{ cur.answer }}</p>
           <p v-if="cur.correctPlayer">{{ isMe(cur.correctPlayer) ? 'You got it!' : `${client.nameOf(cur.correctPlayer)} got it` }}</p>
         </div>
-
-        <button
-          v-if="!cur.dailyDouble && cur.status !== 'revealed' && cur.status !== 'answering'"
-          class="buzz"
-          :class="{ ready: canBuzz }"
-          :disabled="!canBuzz"
-          @pointerdown.prevent="buzz"
-        >
-          <template v-if="cur.lockedOut.includes(client.playerId)">Locked out</template>
-          <template v-else-if="canBuzz">BUZZ!</template>
-          <template v-else-if="cur.status === 'open' || cur.status === 'opening'">Buzzed…</template>
-          <template v-else>Wait…</template>
-        </button>
       </template>
 
       <!-- Final -->
@@ -267,30 +283,6 @@ onUnmounted(() => {
 }
 .timer {
   font-size: 2.4rem;
-}
-.buzz {
-  width: 100%;
-  aspect-ratio: 1.3;
-  max-height: 50vh;
-  border-radius: 24px;
-  font-size: 3rem;
-  font-weight: 900;
-  letter-spacing: 0.05em;
-  background: #3a2a2a;
-  color: #fff9;
-  touch-action: manipulation;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-tap-highlight-color: transparent;
-}
-.buzz.ready {
-  background: radial-gradient(circle at 40% 35%, #ff6b6b, #c0161c);
-  color: white;
-  box-shadow: 0 0 40px #ff4d4d88;
-  opacity: 1;
-}
-.buzz:disabled {
-  opacity: 1;
 }
 .answering {
   display: grid;

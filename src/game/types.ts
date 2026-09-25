@@ -41,6 +41,8 @@ export interface CurrentClue {
   attempt: number
   /** Bridge seq of the host's `buzzers_open` message for the current attempt. */
   openSeq: number | null
+  /** Index into BUZZ_EMOJIS that players must tap to buzz in this attempt. */
+  target: number | null
   buzzWinner: string | null
   lockedOut: string[]
   /** Who answered correctly, if anyone. */
@@ -90,6 +92,8 @@ export interface PublicCurrentClue {
   dailyDouble: boolean
   value: number
   attempt: number
+  /** Emoji to tap (index into BUZZ_EMOJIS); only present while buzzers are opening or open. */
+  target: number | null
   /** Hidden while a Daily Double wager is pending. */
   text: string | null
   media: Media | null

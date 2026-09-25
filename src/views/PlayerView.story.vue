@@ -29,5 +29,6 @@ import { ANN, BOB, CID, scenarioNames } from '@/dev/scenarios'
 
 The real `PlayerView`, signed in as **Ann**, in a game room on an in-memory bridge.
 Bob and Cid are bots: they buzz 2.5–5 s after buzzers open and place wagers on their own.
-Press **BUZZ!** (or Space) in *Clue: buzzers open* to win the race.
+In *Clue: buzzers open* the TV would show 😹, so tap 😹 on the pad (or press 3) to win the race. A wrong
+emoji, or tapping before buzzers open, stuns you for 200 ms.
 </docs>

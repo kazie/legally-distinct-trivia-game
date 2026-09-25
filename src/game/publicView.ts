@@ -55,6 +55,7 @@ function publicCurrent(state: GameState): PublicCurrentClue | null {
     dailyDouble: cur.dailyDouble,
     value: cur.value,
     attempt: cur.attempt,
+    target: cur.status === 'opening' || cur.status === 'open' ? cur.target : null,
     text: hidden ? null : clue.clue,
     media: hidden ? null : (clue.media ?? null),
     answer: cur.status === 'revealed' ? clue.answer : null,

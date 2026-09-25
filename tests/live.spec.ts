@@ -50,9 +50,9 @@ describe.skipIf(!url)('live bridge', () => {
     host.dispatch({ type: 'loadBoard', board: BoardSchema.parse(sample), dailyDoubles: [] })
     host.dispatch({ type: 'startGame' })
     host.dispatch({ type: 'selectClue', ref: { round: 0, category: 0, clue: 0 } })
-    host.dispatch({ type: 'openBuzzers' })
+    host.dispatch({ type: 'openBuzzers', target: 0 })
     await until(() => players.every(({ c }) => c.canBuzz.value))
-    players.forEach(({ c }) => c.buzz())
+    players.forEach(({ c }) => c.press(0))
     await until(() => host.state.value.current?.status === 'answering')
     const winner = host.state.value.current!.buzzWinner
     await until(() => players.every(({ c }) => c.state.value?.current?.buzzWinner === winner))
