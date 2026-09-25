@@ -1,0 +1,325 @@
+{
+  "$schema": "./board.schema.json",
+  "id": "sample",
+  "title": "Sample Trivia Night",
+  "rounds": [
+    {
+      "name": "Round 1",
+      "categories": [
+        {
+          "name": "Space",
+          "clues": [
+            {
+              "value": 200,
+              "clue": "The planet known as the Red Planet",
+              "answer": "Mars"
+            },
+            {
+              "value": 400,
+              "clue": "The largest planet in our solar system",
+              "answer": "Jupiter"
+            },
+            {
+              "value": 600,
+              "clue": "The first person to walk on the Moon, in 1969",
+              "answer": "Neil Armstrong"
+            },
+            {
+              "value": 800,
+              "clue": "The galaxy that contains our solar system",
+              "answer": "The Milky Way"
+            },
+            {
+              "value": 1000,
+              "clue": "The dwarf planet reclassified from planet status in 2006",
+              "answer": "Pluto"
+            }
+          ]
+        },
+        {
+          "name": "Animals",
+          "clues": [
+            {
+              "value": 200,
+              "clue": "The largest mammal on Earth",
+              "answer": "Blue whale"
+            },
+            {
+              "value": 400,
+              "clue": "A group of these birds is called a murder",
+              "answer": "Crows"
+            },
+            {
+              "value": 600,
+              "clue": "The only mammal capable of true sustained flight",
+              "answer": "Bat"
+            },
+            {
+              "value": 800,
+              "clue": "This animal has three hearts and blue blood",
+              "answer": "Octopus",
+              "dailyDouble": true
+            },
+            {
+              "value": 1000,
+              "clue": "The fastest land animal",
+              "answer": "Cheetah"
+            }
+          ]
+        },
+        {
+          "name": "Food & Drink",
+          "clues": [
+            {
+              "value": 200,
+              "clue": "The main ingredient in guacamole",
+              "answer": "Avocado"
+            },
+            {
+              "value": 400,
+              "clue": "The country where sushi originated",
+              "answer": "Japan"
+            },
+            {
+              "value": 600,
+              "clue": "The spice that gives paella its yellow color",
+              "answer": "Saffron"
+            },
+            {
+              "value": 800,
+              "clue": "The Italian dessert whose name means 'pick me up'",
+              "answer": "Tiramisu"
+            },
+            {
+              "value": 1000,
+              "clue": "The grain used to make traditional Japanese sake",
+              "answer": "Rice"
+            }
+          ]
+        },
+        {
+          "name": "Geography",
+          "clues": [
+            {
+              "value": 200,
+              "clue": "The longest river in South America",
+              "answer": "The Amazon"
+            },
+            {
+              "value": 400,
+              "clue": "The capital city of Australia",
+              "answer": "Canberra"
+            },
+            {
+              "value": 600,
+              "clue": "The smallest country in the world by area",
+              "answer": "Vatican City"
+            },
+            {
+              "value": 800,
+              "clue": "The mountain range that separates Europe and Asia",
+              "answer": "The Ural Mountains"
+            },
+            {
+              "value": 1000,
+              "clue": "The country with the most natural lakes",
+              "answer": "Canada"
+            }
+          ]
+        },
+        {
+          "name": "Tech",
+          "clues": [
+            {
+              "value": 200,
+              "clue": "The 'www' in a web address stands for this",
+              "answer": "World Wide Web"
+            },
+            {
+              "value": 400,
+              "clue": "The programming language named after a British comedy troupe",
+              "answer": "Python"
+            },
+            {
+              "value": 600,
+              "clue": "The company whose co-founders include Steve Jobs and Steve Wozniak",
+              "answer": "Apple"
+            },
+            {
+              "value": 800,
+              "clue": "The number of bits in a byte",
+              "answer": "Eight"
+            },
+            {
+              "value": 1000,
+              "clue": "The Finnish-American who created the Linux kernel",
+              "answer": "Linus Torvalds"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Round 2",
+      "categories": [
+        {
+          "name": "History",
+          "clues": [
+            {
+              "value": 400,
+              "clue": "The ship that sank on its maiden voyage in 1912",
+              "answer": "Titanic"
+            },
+            {
+              "value": 800,
+              "clue": "The wall that divided a German city from 1961 to 1989",
+              "answer": "The Berlin Wall"
+            },
+            {
+              "value": 1200,
+              "clue": "The ancient wonder located in Alexandria that guided ships",
+              "answer": "The Lighthouse of Alexandria"
+            },
+            {
+              "value": 1600,
+              "clue": "The year Columbus first reached the Americas",
+              "answer": "1492"
+            },
+            {
+              "value": 2000,
+              "clue": "The queen of the Nile allied with Mark Antony",
+              "answer": "Cleopatra"
+            }
+          ]
+        },
+        {
+          "name": "Music",
+          "clues": [
+            {
+              "value": 400,
+              "clue": "The band whose members were John, Paul, George and Ringo",
+              "answer": "The Beatles"
+            },
+            {
+              "value": 800,
+              "clue": "The number of keys on a standard piano",
+              "answer": "88"
+            },
+            {
+              "value": 1200,
+              "clue": "The Swedish group that won Eurovision with 'Waterloo'",
+              "answer": "ABBA",
+              "dailyDouble": true
+            },
+            {
+              "value": 1600,
+              "clue": "The composer who wrote music while completely deaf",
+              "answer": "Ludwig van Beethoven"
+            },
+            {
+              "value": 2000,
+              "clue": "The instrument Jimi Hendrix famously set on fire",
+              "answer": "Guitar"
+            }
+          ]
+        },
+        {
+          "name": "Science",
+          "clues": [
+            {
+              "value": 400,
+              "clue": "The chemical symbol for gold",
+              "answer": "Au"
+            },
+            {
+              "value": 800,
+              "clue": "The gas plants absorb from the air",
+              "answer": "Carbon dioxide"
+            },
+            {
+              "value": 1200,
+              "clue": "The hardest natural substance",
+              "answer": "Diamond"
+            },
+            {
+              "value": 1600,
+              "clue": "The scientist who proposed the theory of general relativity",
+              "answer": "Albert Einstein"
+            },
+            {
+              "value": 2000,
+              "clue": "The part of the cell known as its powerhouse",
+              "answer": "Mitochondria"
+            }
+          ]
+        },
+        {
+          "name": "Movies",
+          "clues": [
+            {
+              "value": 400,
+              "clue": "The toy cowboy in 'Toy Story'",
+              "answer": "Woody"
+            },
+            {
+              "value": 800,
+              "clue": "The fictional metal in Wakanda",
+              "answer": "Vibranium"
+            },
+            {
+              "value": 1200,
+              "clue": "The director of 'Jaws' and 'E.T.'",
+              "answer": "Steven Spielberg"
+            },
+            {
+              "value": 1600,
+              "clue": "The first feature-length animated film by Disney",
+              "answer": "Snow White and the Seven Dwarfs"
+            },
+            {
+              "value": 2000,
+              "clue": "The film that won the first Academy Award for Best Picture",
+              "answer": "Wings"
+            }
+          ]
+        },
+        {
+          "name": "Words",
+          "clues": [
+            {
+              "value": 400,
+              "clue": "The opposite of 'antonym'",
+              "answer": "Synonym"
+            },
+            {
+              "value": 800,
+              "clue": "A word that reads the same backwards, like 'kayak'",
+              "answer": "Palindrome"
+            },
+            {
+              "value": 1200,
+              "clue": "The language with the most native speakers in the world",
+              "answer": "Mandarin Chinese"
+            },
+            {
+              "value": 1600,
+              "clue": "The letter that appears most often in English text",
+              "answer": "E"
+            },
+            {
+              "value": 2000,
+              "clue": "A famous 10-letter word you can type using only the top letter row of a keyboard",
+              "answer": "Typewriter"
+            }
+          ]
+        }
+      ],
+      "randomDailyDoubles": 1
+    }
+  ],
+  "final": {
+    "category": "Inventions",
+    "clue": "This Swedish chemist invented dynamite and left his fortune to fund a set of famous prizes",
+    "answer": "Alfred Nobel"
+  }
+}

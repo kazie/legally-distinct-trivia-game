@@ -1,0 +1,206 @@
+import { computed, ref, shallowRef } from 'vue'
+import type { BridgeClient, ConnectionStatus } from '@/net/bridgeClient'
+import { decode, encode, type OutgoingMessage } from '@/net/protocol'
+import type { KeyValueStorage } from './hostController'
+import { roomTopic } from './roomCode'
+import type { PublicState } from './types'
+
+export const PING_MS = 5000
+/** Without a state snapshot for this long the host is shown as offline (host heartbeats every 3 s). */
+export const HOST_TIMEOUT_MS = 8000
+
+export type ClientRole = 'player' | 'board'
+
+export interface ClientControllerOptions {
+  bridge: BridgeClient
+  roomCode: string
+  role: ClientRole
+  storage?: KeyValueStorage | null
+  now?: () => number
+  createId?: () => string
+}
+
+export const PLAYER_ID_KEY = 'ldtg:playerId'
+export const joinedKey = (room: string) => `ldtg:joined:${room}`
+
+/** Player phone or board screen: mirrors the host's public state and sends intents. */
+export class ClientController {
+  readonly role: ClientRole
+  readonly roomCode: string
+  readonly playerId: string
+  readonly state = shallowRef<PublicState | null>(null)
+  readonly connection = ref<ConnectionStatus>('closed')
+  /** Name this device joined with in this room, if any. */
+  readonly joinedName = ref<string | null>(null)
+  readonly clock = ref(0)
+  /** Host clock minus local clock, to show the host's timers correctly. */
+  readonly clockOffset = ref(0)
+  private readonly lastStateAt = ref(0)
+  /** Set from the `buzzers_open` message so the button lights up without waiting for the next snapshot. */
+  private readonly openedLocally = shallowRef<{ clueId: string; attempt: number } | null>(null)
+  private readonly buzzedFor = shallowRef<{ clueId: string; attempt: number } | null>(null)
+
+  private readonly bridge: BridgeClient
+  private readonly topic: string
+  private readonly storage: KeyValueStorage | null
+  private readonly now: () => number
+  private timers: ReturnType<typeof setInterval>[] = []
+  private cleanups: (() => void)[] = []
+  private wasListed = false
+
+  readonly hostOnline = computed(() => this.lastStateAt.value > 0 && this.clock.value - this.lastStateAt.value < HOST_TIMEOUT_MS)
+  readonly me = computed(() => this.state.value?.players.find((p) => p.id === this.playerId) ?? null)
+  readonly buzzWinnerName = computed(() => this.nameOf(this.state.value?.current?.buzzWinner ?? null))
+
+  readonly buzzersOpen = computed(() => {
+    const cur = this.state.value?.current
+    if (!cur) return false
+    if (cur.status === 'open') return true
+    const local = this.openedLocally.value
+    return cur.status === 'opening' && local?.clueId === cur.id && local.attempt === cur.attempt
+  })
+
+  readonly canBuzz = computed(() => {
+    const cur = this.state.value?.current
+    if (!cur || !this.me.value || !this.buzzersOpen.value) return false
+    if (cur.lockedOut.includes(this.playerId)) return false
+    const buzzed = this.buzzedFor.value
+    return !(buzzed?.clueId === cur.id && buzzed.attempt === cur.attempt)
+  })
+
+  constructor(options: ClientControllerOptions) {
+    this.bridge = options.bridge
+    this.roomCode = options.roomCode
+    this.role = options.role
+    this.topic = roomTopic(options.roomCode)
+    this.storage = options.storage ?? null
+    this.now = options.now ?? Date.now
+    this.clock.value = this.now()
+    this.playerId = this.loadPlayerId(options.createId ?? (() => crypto.randomUUID()))
+    this.joinedName.value = this.read(joinedKey(this.roomCode))
+  }
+
+  start(): void {
+    this.cleanups.push(this.bridge.subscribe(this.topic, (data) => this.receive(data)))
+    this.cleanups.push(
+      this.bridge.onStatus((status) => {
+        this.connection.value = status
+        if (status === 'open') this.greet()
+      }),
+    )
+    this.timers.push(setInterval(() => (this.clock.value = this.now()), 250))
+    if (this.role === 'player') {
+      this.timers.push(
+        setInterval(() => {
+          if (this.joinedName.value) this.send({ type: 'ping', from: 'player', playerId: this.playerId })
+        }, PING_MS),
+      )
+    }
+  }
+
+  stop(): void {
+    this.timers.forEach(clearInterval)
+    this.timers = []
+    this.cleanups.forEach((fn) => fn())
+    this.cleanups = []
+  }
+
+  join(name: string): void {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    this.joinedName.value = trimmed
+    this.write(joinedKey(this.roomCode), trimmed)
+    this.send({ type: 'join', from: 'player', playerId: this.playerId, name: trimmed })
+  }
+
+  leave(): void {
+    this.joinedName.value = null
+    this.wasListed = false
+    this.storage?.removeItem(joinedKey(this.roomCode))
+  }
+
+  buzz(): boolean {
+    const cur = this.state.value?.current
+    if (!cur || !this.canBuzz.value) return false
+    this.buzzedFor.value = { clueId: cur.id, attempt: cur.attempt }
+    return this.send({ type: 'buzz', from: 'player', playerId: this.playerId, clueId: cur.id, attempt: cur.attempt })
+  }
+
+  wager(kind: 'daily' | 'final', amount: number): boolean {
+    return this.send({ type: 'wager', from: 'player', playerId: this.playerId, kind, amount })
+  }
+
+  finalAnswer(text: string): boolean {
+    return this.send({ type: 'final_answer', from: 'player', playerId: this.playerId, text })
+  }
+
+  nameOf(playerId: string | null): string | null {
+    if (!playerId) return null
+    return this.state.value?.players.find((p) => p.id === playerId)?.name ?? null
+  }
+
+  /** Milliseconds left until a host-clock deadline. */
+  remainingMs(hostDeadline: number | null): number | null {
+    if (hostDeadline === null) return null
+    return Math.max(0, hostDeadline - (this.clock.value + this.clockOffset.value))
+  }
+
+  private greet() {
+    this.send({ type: 'hello', from: this.role, playerId: this.role === 'player' ? this.playerId : undefined })
+    // Rejoin after reconnects or a host reload so the host (re)learns our name.
+    if (this.role === 'player' && this.joinedName.value) {
+      this.send({ type: 'join', from: 'player', playerId: this.playerId, name: this.joinedName.value })
+    }
+  }
+
+  private receive(data: unknown) {
+    const message = decode(data)
+    if (!message) return
+    if (message.type === 'buzzers_open') {
+      this.openedLocally.value = { clueId: message.clueId, attempt: message.attempt }
+      return
+    }
+    if (message.type !== 'state' || message.state.roomCode !== this.roomCode) return
+    const state = message.state as unknown as PublicState
+    const now = this.now()
+    this.state.value = state
+    this.lastStateAt.value = now
+    this.clock.value = now
+    this.clockOffset.value = state.hostTime - now
+
+    if (this.role === 'player' && this.joinedName.value) {
+      const listed = state.players.some((p) => p.id === this.playerId)
+      // Kicked by the host: back to the join form instead of silently rejoining.
+      if (this.wasListed && !listed) this.leave()
+      else this.wasListed = listed
+    }
+  }
+
+  private send(message: OutgoingMessage): boolean {
+    return this.bridge.publish(this.topic, encode(message), { echo: false })
+  }
+
+  private loadPlayerId(createId: () => string): string {
+    const existing = this.read(PLAYER_ID_KEY)
+    if (existing) return existing
+    const id = createId()
+    this.write(PLAYER_ID_KEY, id)
+    return id
+  }
+
+  private read(key: string): string | null {
+    try {
+      return this.storage?.getItem(key) ?? null
+    } catch {
+      return null
+    }
+  }
+
+  private write(key: string, value: string) {
+    try {
+      this.storage?.setItem(key, value)
+    } catch {
+      // Ignore: identity just won't survive a reload.
+    }
+  }
+}
