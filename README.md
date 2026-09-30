@@ -78,7 +78,7 @@ Boards are JSON files in [`boards/`](boards). They're validated against a Zod sc
           "clues": [
             { "value": 200, "clue": "The Red Planet", "answer": "Mars" },
             { "value": 400, "clue": "…", "answer": "…", "dailyDouble": true,
-              "media": { "type": "image", "src": "/media/pic.jpg" },   // file in public/media
+              "media": { "type": "image", "src": "https://example.com/pic.jpg" },   // direct link to an image/audio/video file
               "notes": "Host-only note" }
           ]
         }

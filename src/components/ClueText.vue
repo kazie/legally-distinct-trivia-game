@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import type { Media } from '@/content/schema'
+import { computed } from 'vue'
+import { MediaSrcSchema, type Media } from '@/content/schema'
 
-defineProps<{ text: string; media?: Media | null }>()
+const props = defineProps<{ text: string; media?: Media | null }>()
+// Media also arrives over the network, so check it again before rendering.
+const safeMedia = computed(() => (props.media && MediaSrcSchema.safeParse(props.media.src).success ? props.media : null))
 </script>
 
 <template>
   <div class="clue serif">
-    <img v-if="media?.type === 'image'" :src="media.src" alt="" class="media" />
-    <audio v-else-if="media?.type === 'audio'" :src="media.src" controls class="media" />
-    <video v-else-if="media?.type === 'video'" :src="media.src" controls class="media" />
+    <img v-if="safeMedia?.type === 'image'" :src="safeMedia.src" alt="" class="media" />
+    <audio v-else-if="safeMedia?.type === 'audio'" :src="safeMedia.src" controls class="media" />
+    <video v-else-if="safeMedia?.type === 'video'" :src="safeMedia.src" controls class="media" />
     <div>{{ text }}</div>
   </div>
 </template>

@@ -68,7 +68,7 @@
                           },
                           "src": {
                             "type": "string",
-                            "minLength": 1
+                            "format": "uri"
                           }
                         },
                         "required": [
@@ -134,7 +134,7 @@
             },
             "src": {
               "type": "string",
-              "minLength": 1
+              "format": "uri"
             }
           },
           "required": [

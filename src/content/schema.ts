@@ -1,8 +1,14 @@
 import { z } from 'zod'
 
+/** Media must be an absolute http(s) link: no local paths, `data:`, `javascript:` or other schemes. */
+export const MediaSrcSchema = z.url({
+  protocol: /^https?$/,
+  error: 'Media must be an http(s) link, e.g. https://example.com/pic.jpg',
+})
+
 export const MediaSchema = z.object({
   type: z.enum(['image', 'audio', 'video']),
-  src: z.string().min(1),
+  src: MediaSrcSchema,
 })
 
 export const ClueSchema = z.object({

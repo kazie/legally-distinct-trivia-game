@@ -391,7 +391,7 @@ function applyJson() {
               </select>
             </label>
             <label v-if="selectedClue.media" class="grow">
-              URL (e.g. /media/file.jpg from public/media)
+              URL (direct link to the file, e.g. https://example.com/pic.jpg)
               <input v-model="selectedClue.media.src" />
             </label>
           </div>
