@@ -3,7 +3,7 @@ import { reactive } from 'vue'
 import ClueText from './ClueText.vue'
 
 const state = reactive({ text: 'The Italian dessert whose name means "pick me up"', size: 3 })
-const image = 'https://picsum.photos/seed/tiramisu/640/360'
+const image = 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/58/Tiramisu_-_Raffaele_Diomede.jpg/960px-Tiramisu_-_Raffaele_Diomede.jpg'
 </script>
 
 <template>
