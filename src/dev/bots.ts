@@ -33,12 +33,12 @@ export function startBot(fake: FakeBridge, room: string, id: string, name: strin
   const random = (min: number, max: number) => min + Math.random() * (max - min)
   const later = (fn: () => void, ms = random(...reactionMs)) => setTimeout(fn, ms)
 
-  const tapTarget = () => bot.press(bot.state.value?.current?.target ?? -1)
+  const tapTarget = () => bot.press(bot.buzzable.value?.target ?? -1)
   watch(bot.buzzersOpen, (open) => {
     if (!open || Math.random() >= buzzChance) return
     later(() => {
       // Now and then, fumble: tap a wrong emoji, get stunned, then tap the right one.
-      const target = bot.state.value?.current?.target ?? 0
+      const target = bot.buzzable.value?.target ?? 0
       if (Math.random() < 0.15) {
         bot.press((target + 1) % BUZZ_EMOJIS.length)
         setTimeout(tapTarget, 300)

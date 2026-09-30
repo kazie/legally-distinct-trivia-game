@@ -509,15 +509,6 @@ function applyJson() {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.check {
-  display: flex;
-  align-items: center;
-  gap: 0.4em;
-  color: var(--text);
-}
-.check input {
-  width: auto;
-}
 .json {
   font-family: ui-monospace, monospace;
   font-size: 0.85em;

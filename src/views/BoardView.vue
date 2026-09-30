@@ -5,7 +5,7 @@ import ClueText from '@/components/ClueText.vue'
 import ConnectionBadge from '@/components/ConnectionBadge.vue'
 import JoinQr from '@/components/JoinQr.vue'
 import Scoreboard from '@/components/Scoreboard.vue'
-import { BUZZ_EMOJIS } from '@/game/buzzPad'
+import { BUZZ_EMOJIS, formatSeconds } from '@/game/buzzPad'
 import { ClientController } from '@/game/clientController'
 import { useBridge } from '@/net/useBridge'
 import { beep } from '@/sound'
@@ -23,6 +23,8 @@ const phase = computed(() => state.value?.phase ?? null)
 const finalRemaining = computed(() => client.remainingMs(final.value?.answerEndsAt ?? null))
 const ranking = computed(() => [...(state.value?.players ?? [])].sort((a, b) => b.score - a.score))
 const highlight = computed(() => cur.value?.buzzWinner ?? final.value?.judging?.playerId ?? null)
+const practice = computed(() => state.value?.practice ?? null)
+const EXAMPLE_TARGET = 5
 
 const soundOn = ref(false)
 watch(
@@ -30,7 +32,8 @@ watch(
   (winner) => winner && soundOn.value && beep('buzz'),
 )
 watch(
-  () => [cur.value?.status, cur.value?.correctPlayer] as const,
+  // The clue on screen, or the practice buzz during the intro.
+  () => [client.buzzable.value?.status, cur.value?.correctPlayer] as const,
   ([status, correct], [prevStatus]) => {
     if (!soundOn.value || status === prevStatus) return
     if (status === 'revealed') beep(correct ? 'correct' : 'timeout')
@@ -67,6 +70,43 @@ onUnmounted(() => client.stop())
         <p class="join">Scan or go to <strong>{{ joinUrl }}</strong></p>
         <p class="code serif">Room <span class="gold">{{ room }}</span></p>
         <p v-if="onLocalhost" class="muted">Tip: open this page via your LAN IP so phones can reach it.</p>
+      </div>
+    </section>
+
+    <!-- Intro -->
+    <section v-else-if="phase === 'intro'" class="fill intro">
+      <div class="rules">
+        <h1 class="serif gold">How to play</h1>
+        <ol>
+          <li>The host reads a clue out loud.</li>
+          <li>When the buzzers open, an emoji appears here on the TV.</li>
+          <li>
+            Find <strong>that</strong> emoji on your phone and tap it.
+            <span class="muted">A wrong emoji or tapping too early blocks you for a moment.</span>
+          </li>
+          <li>The fastest player answers out loud. Right wins the points, wrong loses them and locks you out.</li>
+          <li>A <span class="gold">Daily Double</span> is for the player in control only, who wagers first.</li>
+          <li v-if="state.hasFinal">The game ends with a final round: everyone with points wagers and writes an answer.</li>
+        </ol>
+        <div class="example">
+          <div class="mini-pad">
+            <span v-for="(emoji, i) in BUZZ_EMOJIS" :key="emoji" :class="{ hit: i === EXAMPLE_TARGET }">{{ emoji }}</span>
+          </div>
+          <span class="muted">TV shows {{ BUZZ_EMOJIS[EXAMPLE_TARGET] }} → tap {{ BUZZ_EMOJIS[EXAMPLE_TARGET] }}</span>
+        </div>
+      </div>
+      <div class="clue practice" :class="{ open: practice?.status === 'open' }">
+        <div class="clue-head"><span>Practice</span></div>
+        <div v-if="practice && practice.target !== null" class="target">
+          <span :key="practice.attempt" class="target-emoji">{{ BUZZ_EMOJIS[practice.target] }}</span>
+          <small class="gold">Tap it to buzz!</small>
+        </div>
+        <p v-else class="sub">Get your phone ready — the host will show an emoji to tap.</p>
+        <ol v-if="practice?.hits.length" class="hits">
+          <li v-for="hit in practice.hits" :key="hit.playerId">
+            {{ client.nameOf(hit.playerId) }} <span class="muted">{{ formatSeconds(hit.ms) }}</span>
+          </li>
+        </ol>
       </div>
     </section>
 
@@ -172,6 +212,54 @@ onUnmounted(() => client.stop())
   font-size: 2.5em;
   margin: 0;
   letter-spacing: 0.1em;
+}
+.intro {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+}
+@media (max-width: 800px) {
+  .intro {
+    grid-template-columns: 1fr;
+  }
+}
+.rules {
+  font-size: 1.5em;
+}
+.rules h1 {
+  font-size: 2em;
+  margin: 0 0 0.3em;
+}
+.rules li {
+  margin-bottom: 0.5em;
+}
+.rules li .muted {
+  display: block;
+  font-size: 0.8em;
+}
+.example {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+}
+.mini-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 1.6em);
+  gap: 0.2em;
+  font-size: 1.3em;
+  text-align: center;
+}
+.mini-pad span {
+  opacity: 0.35;
+}
+.mini-pad .hit {
+  opacity: 1;
+  outline: 3px solid var(--gold);
+  border-radius: 6px;
+}
+.hits {
+  font-size: 1.8em;
+  margin: 0;
 }
 .board :deep(.cell) {
   font-size: 2.6em;

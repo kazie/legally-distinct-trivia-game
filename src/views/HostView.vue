@@ -3,14 +3,14 @@ import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import BoardGrid from '@/components/BoardGrid.vue'
 import ConnectionBadge from '@/components/ConnectionBadge.vue'
 import JoinQr from '@/components/JoinQr.vue'
-import { BUZZ_EMOJIS, pickBuzzTarget } from '@/game/buzzPad'
+import { BUZZ_EMOJIS, formatSeconds, pickBuzzTarget } from '@/game/buzzPad'
 import { allBoards, type BoardEntry } from '@/content/boards'
 import { ddMaxWager, pickDailyDoubles, type Action } from '@/game/engine'
 import { HostController } from '@/game/hostController'
 import { toPublicState } from '@/game/publicView'
 import { useBridge } from '@/net/useBridge'
 import type { ConnectionStatus } from '@/net/bridgeClient'
-import { LAST_HOST_ROOM_KEY, useStorages } from '@/storage'
+import { LAST_HOST_ROOM_KEY, SHOW_INTRO_KEY, useStorages } from '@/storage'
 
 const props = defineProps<{ room: string }>()
 
@@ -27,6 +27,7 @@ const selectedBoardKey = ref(game.value.board ? `${boardSource(game.value.board.
 const finalSeconds = ref(30)
 const wagerInput = ref<number | null>(null)
 const adjust = ref<Record<string, number | null>>({})
+const showIntro = ref(local?.getItem(SHOW_INTRO_KEY) !== 'false')
 
 const joinUrl = `${location.origin}/play/${props.room}`
 const boardUrl = `${location.origin}/board/${props.room}`
@@ -45,6 +46,7 @@ const categoryName = computed(() => {
 const nameOf = (id: string | null | undefined) => game.value.players.find((p) => p.id === id)?.name ?? '—'
 const connectedIds = computed(() => new Set(pub.value.players.filter((p) => p.connected).map((p) => p.id)))
 const judgingId = computed(() => final.value?.order[final.value.index] ?? null)
+const practice = computed(() => game.value.practice)
 
 function boardSource(id: string) {
   return allBoards().find((b) => b.id === id)?.source ?? 'repo'
@@ -57,6 +59,15 @@ function act(action: Action) {
 function loadSelectedBoard() {
   const entry = boards.value.find((b) => `${b.source}:${b.id}` === selectedBoardKey.value)
   if (entry?.board) act({ type: 'loadBoard', board: entry.board, dailyDoubles: pickDailyDoubles(entry.board) })
+}
+
+function startGame() {
+  local?.setItem(SHOW_INTRO_KEY, String(showIntro.value))
+  act({ type: 'startGame', intro: showIntro.value })
+}
+
+function openPractice() {
+  act({ type: 'openPractice', target: pickBuzzTarget(practice.value?.target ?? null) })
 }
 
 function selectClue(category: number, clueIndex: number) {
@@ -99,6 +110,11 @@ function onKey(event: KeyboardEvent) {
   const c = cur.value
   const key = event.key.toLowerCase()
   if (key === 'z') return host.undo()
+  if (game.value.phase === 'intro' && (key === ' ' || key === 'b')) {
+    // Holding the key would otherwise reopen practice on every auto-repeat.
+    if (!event.repeat) openPractice()
+    return event.preventDefault()
+  }
   if (!c) return
   if ((key === ' ' || key === 'b') && (c.status === 'reading' || c.status === 'closed')) act({ type: 'openBuzzers', target: pickBuzzTarget(c.target) })
   else if (key === 'c' && c.status === 'answering') act({ type: 'judge', correct: true })
@@ -166,12 +182,44 @@ onUnmounted(() => {
               · {{ game.dailyDoubles.length }} Daily Double(s)
             </div>
             <p class="muted">Players join at <a :href="joinUrl" target="_blank">{{ joinUrl }}</a> with code <strong>{{ room }}</strong>.</p>
-            <button class="primary" :disabled="!board" @click="act({ type: 'startGame' })">
+            <label class="check">
+              <input v-model="showIntro" type="checkbox" />
+              Show introduction &amp; practice buzz first
+            </label>
+            <button class="primary" :disabled="!board" @click="startGame">
               Start game with {{ game.players.length }} player(s)
             </button>
           </div>
           <JoinQr :url="joinUrl" :size="180" />
         </div>
+      </div>
+
+      <!-- Intro -->
+      <div v-else-if="game.phase === 'intro' && practice" class="panel stack">
+        <h2>Introduction</h2>
+        <p class="muted">
+          The board screen explains the rules. Run a practice buzz or two so everyone learns to tap the emoji
+          shown on the TV. No points are scored.
+        </p>
+        <div class="row">
+          <button class="primary big" @click="openPractice">
+            {{ practice.target === null ? 'Practice buzz' : 'Practice again' }} <kbd>Space</kbd>
+          </button>
+          <span v-if="practice.status === 'opening'" class="waiting">Opening…</span>
+          <span v-if="practice.target !== null && practice.status !== 'reading'" class="target" title="Emoji players must tap">
+            {{ BUZZ_EMOJIS[practice.target] }}
+          </span>
+          <span v-if="practice.target !== null" class="muted">
+            {{ practice.hits.length }} / {{ game.players.length }} tapped it
+          </span>
+          <span class="spacer" />
+          <button class="primary" @click="act({ type: 'endIntro' })">Start {{ board?.rounds[0]?.name ?? 'game' }}</button>
+        </div>
+        <ol v-if="practice.hits.length" class="hits">
+          <li v-for="hit in practice.hits" :key="hit.playerId">
+            {{ nameOf(hit.playerId) }} <span class="muted">{{ formatSeconds(hit.ms) }}</span>
+          </li>
+        </ol>
       </div>
 
       <!-- Board -->
@@ -228,7 +276,7 @@ onUnmounted(() => {
 
         <div v-else-if="cur.status === 'reading' || cur.status === 'closed'" class="row">
           <button class="primary big" @click="act({ type: 'openBuzzers', target: pickBuzzTarget(cur.target) })">
-            {{ cur.attempt === 0 ? 'Open buzzers' : 'Reopen buzzers' }} <kbd>Space</kbd>
+            {{ cur.status === 'reading' ? 'Open buzzers' : 'Reopen buzzers' }} <kbd>Space</kbd>
           </button>
           <button @click="act({ type: 'revealAnswer' })">Nobody – reveal <kbd>R</kbd></button>
           <span v-if="cur.lockedOut.length" class="muted">Wrong: {{ cur.lockedOut.map(nameOf).join(', ') }}</span>
@@ -428,6 +476,10 @@ onUnmounted(() => {
 .target {
   font-size: 2rem;
   line-height: 1;
+}
+.hits {
+  margin: 0;
+  font-size: 1.2rem;
 }
 .waiting {
   font-size: 1.2rem;

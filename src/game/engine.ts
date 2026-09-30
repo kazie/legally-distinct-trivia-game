@@ -1,10 +1,10 @@
 import type { Board } from '@/content/schema'
 import { isBuzzTarget } from './buzzPad'
-import type { ClueRef, CurrentClue, GameState, Player } from './types'
+import type { BuzzWindow, ClueRef, CurrentClue, GameState, Player } from './types'
 
 export type Action =
   | { type: 'loadBoard'; board: Board; dailyDoubles: string[] }
-  | { type: 'startGame' }
+  | { type: 'startGame'; intro?: boolean }
   | { type: 'resetToLobby' }
   | { type: 'playerJoined'; id: string; name: string; now: number }
   | { type: 'playerSeen'; id: string; now: number }
@@ -17,8 +17,10 @@ export type Action =
   | { type: 'setDdWager'; id: string; amount: number }
   | { type: 'showDdClue' }
   | { type: 'openBuzzers'; target: number }
-  | { type: 'buzzersOpened'; clueId: string; attempt: number; seq: number }
-  | { type: 'buzz'; playerId: string; clueId: string; attempt: number; seq: number; emoji: number }
+  | { type: 'buzzersOpened'; clueId: string; attempt: number; seq: number; now: number }
+  | { type: 'buzz'; playerId: string; clueId: string; attempt: number; seq: number; emoji: number; now: number }
+  | { type: 'openPractice'; target: number }
+  | { type: 'endIntro' }
   | { type: 'closeBuzzers' }
   | { type: 'judge'; correct: boolean }
   | { type: 'revealAnswer' }
@@ -38,6 +40,8 @@ export type Action =
 export const FINAL_ANSWER_GRACE_MS = 2000
 export const MAX_NAME_LENGTH = 24
 export const MAX_FINAL_ANSWER_LENGTH = 200
+/** The clue id practice buzzes use in `buzzers_open` and `buzz` messages. */
+export const PRACTICE_ID = 'practice'
 
 export function clueId(ref: ClueRef): string {
   return `${ref.round}-${ref.category}-${ref.clue}`
@@ -55,6 +59,8 @@ export function createGame(roomCode: string): GameState {
     control: null,
     current: null,
     final: null,
+    practice: null,
+    buzzRound: 0,
   }
 }
 
@@ -139,6 +145,26 @@ function startFinal(s: GameState) {
   }
 }
 
+/** Starts opening buzzers with a new target and an attempt number never used before in this game. */
+function openWindow(s: GameState, w: BuzzWindow, target: number) {
+  s.buzzRound += 1
+  w.status = 'opening'
+  w.attempt = s.buzzRound
+  w.openSeq = null
+  w.target = target
+}
+
+/** The id `buzzers_open` and `buzz` messages use for the buzzers in play: the practice during the intro, or the clue on screen. */
+export function buzzWindowId(s: GameState): string | null {
+  if (s.phase === 'intro') return s.practice ? PRACTICE_ID : null
+  return s.current?.id ?? null
+}
+
+function windowFor(s: GameState, id: string): BuzzWindow | null {
+  if (id !== buzzWindowId(s)) return null
+  return id === PRACTICE_ID ? s.practice : s.current
+}
+
 /**
  * Pure game reducer. Returns the same object when the action does not apply,
  * so callers can cheaply detect no-ops (e.g. a late or duplicate buzz).
@@ -160,12 +186,30 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
 
     case 'startGame':
       if (s.phase !== 'lobby' || !s.board) return false
-      s.phase = 'board'
+      s.phase = action.intro ? 'intro' : 'board'
       s.round = 0
       s.used = []
       s.current = null
       s.final = null
       s.control = s.control ?? s.players[0]?.id ?? null
+      s.practice = action.intro
+        ? { status: 'reading', attempt: 0, openSeq: null, target: null, openedAt: 0, hits: [] }
+        : null
+      return true
+
+    case 'openPractice':
+      // Allowed at any time, even while still opening: if the `buzzers_open` echo got lost, pressing again is the way out.
+      if (s.phase !== 'intro' || !s.practice || !isBuzzTarget(action.target)) return false
+      openWindow(s, s.practice, action.target)
+      s.practice.hits = []
+      return true
+
+    case 'endIntro':
+      if (s.phase !== 'intro') return false
+      s.phase = 'board'
+      s.practice = null
+      // Players may have joined during the intro, after startGame found nobody to give control to.
+      s.control ??= s.players[0]?.id ?? null
       return true
 
     case 'resetToLobby':
@@ -174,6 +218,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       s.used = []
       s.current = null
       s.final = null
+      s.practice = null
       s.players.forEach((p) => (p.score = 0))
       return true
 
@@ -201,6 +246,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       if (!findPlayer(s, action.id)) return false
       s.players = s.players.filter((p) => p.id !== action.id)
       if (s.control === action.id) s.control = null
+      if (s.practice) s.practice.hits = s.practice.hits.filter((h) => h.playerId !== action.id)
       if (cur?.buzzWinner === action.id && cur.status === 'answering' && !cur.dailyDouble) {
         cur.buzzWinner = null
         cur.status = 'closed'
@@ -275,24 +321,29 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
     case 'openBuzzers':
       if (!cur || cur.dailyDouble || (cur.status !== 'reading' && cur.status !== 'closed')) return false
       if (!isBuzzTarget(action.target)) return false
-      cur.status = 'opening'
-      cur.attempt += 1
-      cur.openSeq = null
-      cur.target = action.target
+      openWindow(s, cur, action.target)
       cur.buzzWinner = null
       return true
 
-    case 'buzzersOpened':
-      if (cur?.status !== 'opening' || cur.id !== action.clueId || cur.attempt !== action.attempt) return false
-      cur.status = 'open'
-      cur.openSeq = action.seq
+    case 'buzzersOpened': {
+      const w = windowFor(s, action.clueId)
+      if (w?.status !== 'opening' || w.attempt !== action.attempt) return false
+      w.status = 'open'
+      w.openSeq = action.seq
+      if (w === s.practice) s.practice.openedAt = action.now
       return true
+    }
 
     case 'buzz': {
-      if (cur?.status !== 'open' || cur.id !== action.clueId || cur.attempt !== action.attempt) return false
-      if (cur.openSeq === null || action.seq <= cur.openSeq) return false
-      if (action.emoji !== cur.target) return false
-      if (!findPlayer(s, action.playerId) || cur.lockedOut.includes(action.playerId)) return false
+      const w = windowFor(s, action.clueId)
+      if (w?.status !== 'open' || w.attempt !== action.attempt || w.openSeq === null || action.seq <= w.openSeq) return false
+      if (action.emoji !== w.target || !findPlayer(s, action.playerId)) return false
+      if (w === s.practice) {
+        if (s.practice.hits.some((h) => h.playerId === action.playerId)) return false
+        s.practice.hits.push({ playerId: action.playerId, ms: Math.max(0, action.now - s.practice.openedAt) })
+        return true
+      }
+      if (!cur || cur.lockedOut.includes(action.playerId)) return false
       cur.status = 'answering'
       cur.buzzWinner = action.playerId
       return true

@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import BuzzPad, { type BuzzPadMode } from '@/components/BuzzPad.vue'
 import ConnectionBadge from '@/components/ConnectionBadge.vue'
 import Scoreboard from '@/components/Scoreboard.vue'
+import { formatSeconds } from '@/game/buzzPad'
 import { ClientController } from '@/game/clientController'
 import { useBridge } from '@/net/useBridge'
 import { LAST_NAME_KEY, useStorages } from '@/storage'
@@ -11,7 +12,7 @@ const props = defineProps<{ room: string }>()
 
 const { local, session } = useStorages()
 const client = new ClientController({ bridge: useBridge(), roomCode: props.room, role: 'player', storage: session })
-const { state, me, connection, hostOnline, joinedName, canBuzz, hasBuzzed, stunned, buzzWinnerName } = client
+const { state, me, connection, hostOnline, joinedName, canBuzz, hasBuzzed, stunned, buzzWinnerName, practiceHit } = client
 
 const nameInput = ref(joinedName.value ?? local?.getItem(LAST_NAME_KEY) ?? '')
 const wagerInput = ref<number | null>(null)
@@ -47,13 +48,17 @@ function press(emoji: number) {
 
 const pad = computed((): { mode: BuzzPadMode; label: string | null; sublabel: string | null } => {
   const c = cur.value
-  if (!c || c.status === 'revealed') return { mode: 'done', label: null, sublabel: null }
-  if (c.status === 'answering') {
-    return isMe(c.buzzWinner)
-      ? { mode: 'mine', label: "YOU'RE UP!", sublabel: 'Say your answer' }
-      : { mode: 'answering', label: buzzWinnerName.value, sublabel: 'is answering' }
+  const hit = practiceHit.value // only ever set during the intro
+  if (hit) return { mode: 'mine', label: 'Got it!', sublabel: formatSeconds(hit.ms) }
+  if (phase.value !== 'intro') {
+    if (!c || c.status === 'revealed') return { mode: 'done', label: null, sublabel: null }
+    if (c.status === 'answering') {
+      return isMe(c.buzzWinner)
+        ? { mode: 'mine', label: "YOU'RE UP!", sublabel: 'Say your answer' }
+        : { mode: 'answering', label: buzzWinnerName.value, sublabel: 'is answering' }
+    }
+    if (c.lockedOut.includes(client.playerId)) return { mode: 'locked', label: 'Locked out', sublabel: null }
   }
-  if (c.lockedOut.includes(client.playerId)) return { mode: 'locked', label: 'Locked out', sublabel: null }
   if (stunned.value) return { mode: 'stunned', label: stunReason.value, sublabel: null }
   if (hasBuzzed.value) return { mode: 'buzzed', label: 'Buzzed…', sublabel: null }
   if (canBuzz.value) return { mode: 'ready', label: null, sublabel: null }
@@ -89,7 +94,7 @@ watch(
 function onKey(event: KeyboardEvent) {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
   const digit = /^Digit([1-9])$|^Numpad([1-9])$/.exec(event.code)
-  if (!digit || cur.value?.dailyDouble || phase.value !== 'clue') return
+  if (!digit || cur.value?.dailyDouble || (phase.value !== 'clue' && phase.value !== 'intro')) return
   event.preventDefault()
   press(Number(digit[1] ?? digit[2]) - 1)
 }
@@ -140,6 +145,14 @@ onUnmounted(() => {
         <h2>You're in!</h2>
         <p class="muted">Waiting for the host to start.</p>
       </div>
+
+      <template v-else-if="phase === 'intro'">
+        <div class="panel center">
+          <h2>Practice round</h2>
+          <p class="muted">When an emoji shows up on the TV, tap the same one here. Wrong or too early blocks you for a moment.</p>
+        </div>
+        <BuzzPad :mode="pad.mode" :label="pad.label" :sublabel="pad.sublabel" @press="press" />
+      </template>
 
       <div v-else-if="phase === 'board'" class="panel center">
         <p v-if="isMe(state.control)" class="big gold">Your pick! Tell the host a category and value.</p>

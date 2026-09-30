@@ -4,7 +4,7 @@
  */
 import sample from '../../boards/sample.json'
 import { BoardSchema } from '@/content/schema'
-import { createGame, reduce, type Action } from '@/game/engine'
+import { createGame, PRACTICE_ID, reduce, type Action } from '@/game/engine'
 import type { GameState } from '@/game/types'
 
 export const DEMO_ROOM = 'DEMO'
@@ -46,6 +46,20 @@ function midRound(): GameState {
   return s
 }
 
+function intro(): GameState {
+  return run(lobby(), [{ type: 'startGame', intro: true }])
+}
+
+function practiceResults(): GameState {
+  const openedAt = Date.now()
+  return run(intro(), [
+    { type: 'openPractice', target: DEMO_TARGET },
+    { type: 'buzzersOpened', clueId: PRACTICE_ID, attempt: 1, seq: 1, now: openedAt },
+    { type: 'buzz', playerId: ANN, clueId: PRACTICE_ID, attempt: 1, seq: 2, emoji: DEMO_TARGET, now: openedAt + 410 },
+    { type: 'buzz', playerId: CID, clueId: PRACTICE_ID, attempt: 1, seq: 3, emoji: DEMO_TARGET, now: openedAt + 630 },
+  ])
+}
+
 const CLUE = { round: 0, category: 2, clue: 2 } // Food & Drink, 600
 const CLUE_ID = '0-2-2'
 /** The emoji (index into BUZZ_EMOJIS) players must tap in the scenarios. */
@@ -58,8 +72,8 @@ function clue(): GameState {
 function answering(by = BOB): GameState {
   return run(clue(), [
     { type: 'openBuzzers', target: DEMO_TARGET },
-    { type: 'buzzersOpened', clueId: CLUE_ID, attempt: 1, seq: 1 },
-    { type: 'buzz', playerId: by, clueId: CLUE_ID, attempt: 1, seq: 2, emoji: DEMO_TARGET },
+    { type: 'buzzersOpened', clueId: CLUE_ID, attempt: 1, seq: 1, now: 0 },
+    { type: 'buzz', playerId: by, clueId: CLUE_ID, attempt: 1, seq: 2, emoji: DEMO_TARGET, now: 0 },
   ])
 }
 
@@ -79,6 +93,9 @@ function finalAnswer(): GameState {
 export const scenarios = {
   'Lobby (empty)': () => ({ state: lobby(false) }),
   Lobby: () => ({ state: lobby() }),
+  Intro: () => ({ state: intro() }),
+  'Intro: practice open': () => ({ state: intro(), live: [{ type: 'openPractice', target: DEMO_TARGET }] }),
+  'Intro: practice results': () => ({ state: practiceResults() }),
   Board: () => ({ state: midRound() }),
   'Clue: reading': () => ({ state: clue() }),
   'Clue: buzzers open': () => ({ state: clue(), live: [{ type: 'openBuzzers', target: DEMO_TARGET }] }),

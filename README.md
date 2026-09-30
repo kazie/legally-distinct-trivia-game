@@ -41,6 +41,8 @@ The bridge URL defaults to `ws://<page host>:8080/ws`. To use another one, set `
 ## How a game plays
 
 1. **Lobby:** the host picks a board. Players join with a name.
+   **Intro** (optional, on by default): the board screen explains the rules, and the host runs practice buzzes
+   (Space) so everyone learns to tap the emoji shown on the TV. It shows who tapped fastest, and no points are scored.
 2. **Board:** the host picks a clue, usually the one named by the player in control (★).
 3. **Clue:** the host reads it, then presses **Open buzzers** (Space). The board screen shows a random emoji,
    and players buzz by tapping that emoji on the 3×3 pad on their phone. The pad is the same for everyone. A

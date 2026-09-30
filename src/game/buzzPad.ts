@@ -4,6 +4,11 @@ export const BUZZ_EMOJIS = ['🫠', '🧟', '😹', '🤔', '👀', '👻', '�
 /** How long a player is blocked after tapping the wrong emoji (or tapping before buzzers open). */
 export const STUN_MS = 200
 
+/** A reaction time for display, e.g. `0.41 s`. */
+export function formatSeconds(ms: number): string {
+  return `${(ms / 1000).toFixed(2)} s`
+}
+
 export function isBuzzTarget(value: number): boolean {
   return Number.isInteger(value) && value >= 0 && value < BUZZ_EMOJIS.length
 }

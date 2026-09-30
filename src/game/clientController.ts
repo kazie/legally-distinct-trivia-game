@@ -2,9 +2,10 @@ import { computed, ref, shallowRef } from 'vue'
 import type { BridgeClient, ConnectionStatus } from '@/net/bridgeClient'
 import { STUN_MS } from './buzzPad'
 import { decode, encode, type OutgoingMessage } from '@/net/protocol'
+import { PRACTICE_ID } from './engine'
 import type { KeyValueStorage } from './hostController'
 import { roomTopic } from './roomCode'
-import type { PublicState } from './types'
+import type { PracticeHit, PublicCurrentClue, PublicState } from './types'
 
 export const PING_MS = 5000
 /** Without a state snapshot for this long the host is shown as offline (host heartbeats every 3 s). */
@@ -23,6 +24,9 @@ export interface ClientControllerOptions {
   now?: () => number
   createId?: () => string
 }
+
+/** Whatever the buzz pad currently plays for: the clue on screen, or the intro's practice buzz. */
+export type Buzzable = Pick<PublicCurrentClue, 'id' | 'attempt' | 'status' | 'target' | 'dailyDouble' | 'lockedOut'>
 
 export const PLAYER_ID_KEY = 'ldtg:playerId'
 export const joinedKey = (room: string) => `ldtg:joined:${room}`
@@ -59,8 +63,21 @@ export class ClientController {
   readonly me = computed(() => this.state.value?.players.find((p) => p.id === this.playerId) ?? null)
   readonly buzzWinnerName = computed(() => this.nameOf(this.state.value?.current?.buzzWinner ?? null))
 
+  readonly buzzable = computed((): Buzzable | null => {
+    const state = this.state.value
+    if (state?.phase === 'intro' && state.practice) {
+      return { ...state.practice, id: PRACTICE_ID, dailyDouble: false, lockedOut: [] }
+    }
+    return state?.current ?? null
+  })
+
+  /** This player's practice result, once they tapped the right emoji. */
+  readonly practiceHit = computed((): PracticeHit | null => {
+    return this.state.value?.practice?.hits.find((h) => h.playerId === this.playerId) ?? null
+  })
+
   readonly buzzersOpen = computed(() => {
-    const cur = this.state.value?.current
+    const cur = this.buzzable.value
     if (!cur) return false
     if (cur.status === 'open') return true
     const local = this.openedLocally.value
@@ -69,13 +86,13 @@ export class ClientController {
 
   /** Whether this player has already buzzed in the current attempt. */
   readonly hasBuzzed = computed(() => {
-    const cur = this.state.value?.current
+    const cur = this.buzzable.value
     const buzzed = this.buzzedFor.value
     return !!cur && buzzed?.clueId === cur.id && buzzed.attempt === cur.attempt
   })
 
   readonly canBuzz = computed(() => {
-    const cur = this.state.value?.current
+    const cur = this.buzzable.value
     if (!cur || !this.me.value || !this.buzzersOpen.value || this.stunned.value) return false
     return !cur.lockedOut.includes(this.playerId) && !this.hasBuzzed.value
   })
@@ -139,7 +156,7 @@ export class ClientController {
    * before buzzers open, stuns for STUN_MS. Taps that can't matter (locked out, someone answering…) do nothing.
    */
   press(emoji: number): PressResult {
-    const cur = this.state.value?.current
+    const cur = this.buzzable.value
     if (!cur || !this.me.value || cur.dailyDouble || this.stunned.value) return 'ignored'
     if (cur.status !== 'reading' && cur.status !== 'closed' && cur.status !== 'opening' && cur.status !== 'open') return 'ignored'
     if (cur.lockedOut.includes(this.playerId) || this.hasBuzzed.value) return 'ignored'

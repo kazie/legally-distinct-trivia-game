@@ -1,7 +1,7 @@
 import { shallowRef, type ShallowRef } from 'vue'
 import type { BridgeClient } from '@/net/bridgeClient'
 import { decode, encode, type Message, type OutgoingMessage } from '@/net/protocol'
-import { createGame, reduce, type Action } from './engine'
+import { buzzWindowId, createGame, reduce, type Action } from './engine'
 import { toPublicState } from './publicView'
 import { roomTopic } from './roomCode'
 import type { GameState } from './types'
@@ -21,6 +21,16 @@ export interface HostControllerOptions {
   storage?: KeyValueStorage | null
   now?: () => number
   heartbeatMs?: number
+}
+
+/**
+ * Buzzers can't stay opening or open when the host steps back (undo) or reloads: the `buzzers_open` echo
+ * already came or never will, and buzzes may have raced it. Close them so the host reopens explicitly.
+ */
+function settleBuzzers(s: GameState): GameState {
+  if (s.current?.status === 'opening' || s.current?.status === 'open') s.current.status = 'closed'
+  if (s.practice) s.practice.status = 'reading'
+  return s
 }
 
 export function hostStorageKey(roomCode: string): string {
@@ -81,23 +91,22 @@ export class HostController {
       this.canUndo.value = true
     }
     this.commit(after)
-    if (action.type === 'openBuzzers' && after.current) {
+    const opened = after.buzzRound !== before.buzzRound ? buzzWindowId(after) : null
+    if (opened) {
       // Buzzers only count as open once this message comes back from the bridge with its seq;
       // buzzes with a higher seq on the same topic are guaranteed to have been sent after it.
-      this.send({ type: 'buzzers_open', from: 'host', clueId: after.current.id, attempt: after.current.attempt }, true)
+      this.send({ type: 'buzzers_open', from: 'host', clueId: opened, attempt: after.buzzRound }, true)
     }
     return true
   }
 
   undo(): void {
-    const previous = this.history.pop()
+    const popped = this.history.pop()
     this.canUndo.value = this.history.length > 0
-    if (!previous) return
-    // Undoing into "opening"/"open" would wait for an echo that already came (or accept stale buzzes);
-    // step back to closed so the host reopens explicitly.
-    if (previous.current && (previous.current.status === 'opening' || previous.current.status === 'open')) {
-      previous.current = { ...previous.current, status: 'closed' }
-    }
+    if (!popped) return
+    const previous = settleBuzzers(structuredClone(popped))
+    // Players remember which attempts they buzzed in, so the next opening must not reuse a number.
+    previous.buzzRound = this.state.value.buzzRound
     this.commit(previous)
   }
 
@@ -122,7 +131,7 @@ export class HostController {
     const now = this.now()
     switch (message.type) {
       case 'buzzers_open':
-        this.apply({ type: 'buzzersOpened', clueId: message.clueId, attempt: message.attempt, seq })
+        this.apply({ type: 'buzzersOpened', clueId: message.clueId, attempt: message.attempt, seq, now })
         return
       case 'hello':
         if (message.playerId) this.apply({ type: 'playerSeen', id: message.playerId, now }, false)
@@ -143,6 +152,7 @@ export class HostController {
           attempt: message.attempt,
           seq,
           emoji: message.emoji,
+          now,
         })
         return
       case 'wager':
@@ -198,11 +208,11 @@ export class HostController {
       if (!raw) return null
       const saved = JSON.parse(raw) as GameState
       if (saved.roomCode !== roomCode) return null
-      // Buzzes that raced a reload are gone; let the host reopen explicitly.
-      if (saved.current && (saved.current.status === 'opening' || saved.current.status === 'open')) {
-        saved.current.status = 'closed'
-      }
-      return saved
+      // Games saved before the intro and the game-wide buzz counter existed.
+      saved.practice ??= null
+      saved.buzzRound ??= saved.current?.attempt ?? 0
+      // Buzzes that raced a reload are gone.
+      return settleBuzzers(saved)
     } catch {
       return null
     }

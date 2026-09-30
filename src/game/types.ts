@@ -16,6 +16,7 @@ export interface ClueRef {
 
 export type Phase =
   | 'lobby'
+  | 'intro'
   | 'board'
   | 'clue'
   | 'final_category'
@@ -30,19 +31,23 @@ export type Phase =
  */
 export type ClueStatus = 'dd_wager' | 'reading' | 'opening' | 'open' | 'answering' | 'closed' | 'revealed'
 
-export interface CurrentClue {
-  ref: ClueRef
-  id: string
+/** Buzzers that open with an emoji to tap: the clue on screen, or a practice buzz in the intro. */
+export interface BuzzWindow {
   status: ClueStatus
-  dailyDouble: boolean
-  /** Points at stake: the clue value, or the wager for a Daily Double. */
-  value: number
-  /** Increases every time buzzers are (re)opened, so stale buzzes can be told apart. */
+  /** Set from `GameState.buzzRound` every time buzzers (re)open, so stale buzzes can be told apart. */
   attempt: number
   /** Bridge seq of the host's `buzzers_open` message for the current attempt. */
   openSeq: number | null
   /** Index into BUZZ_EMOJIS that players must tap to buzz in this attempt. */
   target: number | null
+}
+
+export interface CurrentClue extends BuzzWindow {
+  ref: ClueRef
+  id: string
+  dailyDouble: boolean
+  /** Points at stake: the clue value, or the wager for a Daily Double. */
+  value: number
   buzzWinner: string | null
   lockedOut: string[]
   /** Who answered correctly, if anyone. */
@@ -63,6 +68,20 @@ export interface FinalState {
   results: Record<string, boolean>
 }
 
+/** A practice buzz during the intro: same emoji pad, no points. */
+export interface Practice extends BuzzWindow {
+  status: 'reading' | 'opening' | 'open'
+  /** Host clock time the buzzers opened, for reaction times. */
+  openedAt: number
+  /** Players who tapped the right emoji, fastest first. */
+  hits: PracticeHit[]
+}
+
+export interface PracticeHit {
+  playerId: string
+  ms: number
+}
+
 export interface GameState {
   roomCode: string
   board: Board | null
@@ -76,6 +95,9 @@ export interface GameState {
   control: string | null
   current: CurrentClue | null
   final: FinalState | null
+  practice: Practice | null
+  /** Counts every buzzer opening in the game. Never goes back, not even on undo, so attempts are never reused. */
+  buzzRound: number
 }
 
 /* ---------- What gets broadcast to players and the board screen (no unrevealed answers) ---------- */
@@ -123,6 +145,14 @@ export interface PublicFinal {
   answer: string | null
 }
 
+export interface PublicPractice {
+  attempt: number
+  status: Practice['status']
+  /** Only present while buzzers are opening or open. */
+  target: number | null
+  hits: PracticeHit[]
+}
+
 export interface PublicPlayer {
   id: string
   name: string
@@ -133,6 +163,7 @@ export interface PublicPlayer {
 export interface PublicState {
   roomCode: string
   title: string | null
+  hasFinal: boolean
   phase: Phase
   round: {
     index: number
@@ -144,5 +175,6 @@ export interface PublicState {
   control: string | null
   current: PublicCurrentClue | null
   final: PublicFinal | null
+  practice: PublicPractice | null
   hostTime: number
 }

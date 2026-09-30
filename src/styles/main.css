@@ -128,6 +128,16 @@ label {
   font-size: 0.9em;
   color: var(--muted);
 }
+/* A checkbox with its text on the same line. */
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  color: var(--text);
+}
+.check input {
+  width: auto;
+}
 
 .panel {
   background: var(--panel);

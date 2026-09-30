@@ -1,5 +1,5 @@
 import { clueId, ddMaxWager } from './engine'
-import type { GameState, PublicCurrentClue, PublicFinal, PublicState } from './types'
+import type { BuzzWindow, GameState, PublicCurrentClue, PublicFinal, PublicPractice, PublicState } from './types'
 
 /** A player counts as connected if the host heard from them this recently. */
 export const PLAYER_TIMEOUT_MS = 12_000
@@ -12,6 +12,7 @@ export function toPublicState(state: GameState, now: number): PublicState {
   return {
     roomCode: state.roomCode,
     title: board?.title ?? null,
+    hasFinal: !!board?.final,
     phase: state.phase,
     round:
       board && round
@@ -37,8 +38,14 @@ export function toPublicState(state: GameState, now: number): PublicState {
     control: state.control,
     current: publicCurrent(state),
     final: publicFinal(state),
+    practice: publicPractice(state),
     hostTime: now,
   }
+}
+
+/** Players only learn which emoji to tap once buzzers are opening, so nobody can tap early. */
+function visibleTarget(w: BuzzWindow): number | null {
+  return w.status === 'opening' || w.status === 'open' ? w.target : null
 }
 
 function publicCurrent(state: GameState): PublicCurrentClue | null {
@@ -55,7 +62,7 @@ function publicCurrent(state: GameState): PublicCurrentClue | null {
     dailyDouble: cur.dailyDouble,
     value: cur.value,
     attempt: cur.attempt,
-    target: cur.status === 'opening' || cur.status === 'open' ? cur.target : null,
+    target: visibleTarget(cur),
     text: hidden ? null : clue.clue,
     media: hidden ? null : (clue.media ?? null),
     answer: cur.status === 'revealed' ? clue.answer : null,
@@ -64,6 +71,17 @@ function publicCurrent(state: GameState): PublicCurrentClue | null {
     correctPlayer: cur.correctPlayer,
     ddPlayer: cur.ddPlayer,
     ddMaxWager: cur.dailyDouble ? ddMaxWager(state, cur.ddPlayer) : null,
+  }
+}
+
+function publicPractice(state: GameState): PublicPractice | null {
+  const p = state.practice
+  if (!p || state.phase !== 'intro') return null
+  return {
+    attempt: p.attempt,
+    status: p.status,
+    target: visibleTarget(p),
+    hits: p.hits,
   }
 }
 
