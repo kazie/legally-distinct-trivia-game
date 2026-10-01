@@ -124,6 +124,9 @@ code and the protocol could send fake messages.
 pnpm story:dev     # http://localhost:6006
 ```
 
+Published build: <https://kazie.github.io/legally-distinct-trivia-game/> (deployed from `master` by
+`.github/workflows/stories.yml`).
+
 [Histoire](https://histoire.dev) is a Vue-native, Vite-based take on Ladle/Storybook. The stories render the
 **real** screens, not mock-ups:
 
