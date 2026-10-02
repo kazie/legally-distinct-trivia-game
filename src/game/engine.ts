@@ -4,7 +4,7 @@ import type { BuzzWindow, ClueRef, CurrentClue, GameState, Player } from './type
 
 export type Action =
   | { type: 'loadBoard'; board: Board; dailyDoubles: string[] }
-  | { type: 'startGame'; intro?: boolean }
+  | { type: 'startGame'; intro?: boolean; emojiOnPhones?: boolean }
   | { type: 'resetToLobby' }
   | { type: 'playerJoined'; id: string; name: string; now: number }
   | { type: 'playerSeen'; id: string; now: number }
@@ -61,6 +61,7 @@ export function createGame(roomCode: string): GameState {
     final: null,
     practice: null,
     buzzRound: 0,
+    emojiOnPhones: false,
   }
 }
 
@@ -187,6 +188,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
     case 'startGame':
       if (s.phase !== 'lobby' || !s.board) return false
       s.phase = action.intro ? 'intro' : 'board'
+      s.emojiOnPhones = !!action.emojiOnPhones
       s.round = 0
       s.used = []
       s.current = null

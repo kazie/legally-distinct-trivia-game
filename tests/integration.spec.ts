@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import sample from '../boards/sample.json'
 import { validateBoard, type Board } from '@/content/schema'
 import { BridgeClient } from '@/net/bridgeClient'
-import { HostController } from '@/game/hostController'
+import { HostController, hostStorageKey } from '@/game/hostController'
 import { STUN_MS } from '@/game/buzzPad'
 import { ClientController } from '@/game/clientController'
 import { FakeBridge, MemoryStorage, flush } from '@/dev/fakeBridge'
@@ -89,6 +89,38 @@ describe('host and players over the bridge', () => {
     await flush()
     expect(ann.state.value?.current?.status).toBe('answering')
     expect(ann.state.value?.players.map((p) => p.score)).toEqual([0, -200, 0])
+  })
+
+  it.each([false, true])('shows the emoji on phones only while buzzers are open (option on: %s)', async (emojiOnPhones) => {
+    const { host, player } = setup()
+    const [ann, bob] = [player(1), player(2)]
+    await flush()
+    ann.join('Ann')
+    bob.join('Bob')
+    await flush()
+    host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
+    host.dispatch({ type: 'startGame', emojiOnPhones })
+    host.dispatch({ type: 'selectClue', ref: { round: 0, category: 0, clue: 0 } })
+    await flush()
+    expect(ann.phoneTarget.value).toBeNull()
+
+    host.dispatch({ type: 'openBuzzers', target: 7 })
+    await flush()
+    expect(ann.phoneTarget.value).toBe(emojiOnPhones ? 7 : null)
+
+    expect(bob.press(7)).toBe('buzzed')
+    await flush()
+    expect(ann.phoneTarget.value).toBeNull()
+  })
+
+  it('resumes games saved before emoji on phones existed', () => {
+    const { host, hostStorage } = setup()
+    host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
+    const saved = JSON.parse(hostStorage.getItem(hostStorageKey('ROOM'))!)
+    delete saved.emojiOnPhones
+    hostStorage.setItem(hostStorageKey('ROOM'), JSON.stringify(saved))
+    const restored = new HostController({ bridge: host['bridge'], roomCode: 'ROOM', storage: hostStorage })
+    expect(restored.state.value.emojiOnPhones).toBe(false)
   })
 
   it('stuns a player for a wrong emoji or an early tap, without sending a buzz', async () => {

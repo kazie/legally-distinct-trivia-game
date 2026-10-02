@@ -10,7 +10,7 @@ import { HostController } from '@/game/hostController'
 import { toPublicState } from '@/game/publicView'
 import { useBridge } from '@/net/useBridge'
 import type { ConnectionStatus } from '@/net/bridgeClient'
-import { LAST_HOST_ROOM_KEY, SHOW_INTRO_KEY, useStorages } from '@/storage'
+import { EMOJI_ON_PHONES_KEY, LAST_HOST_ROOM_KEY, SHOW_INTRO_KEY, useStorages } from '@/storage'
 
 const props = defineProps<{ room: string }>()
 
@@ -28,6 +28,7 @@ const finalSeconds = ref(30)
 const wagerInput = ref<number | null>(null)
 const adjust = ref<Record<string, number | null>>({})
 const showIntro = ref(local?.getItem(SHOW_INTRO_KEY) !== 'false')
+const emojiOnPhones = ref(local?.getItem(EMOJI_ON_PHONES_KEY) === 'true')
 
 const joinUrl = `${location.origin}/play/${props.room}`
 const boardUrl = `${location.origin}/board/${props.room}`
@@ -63,7 +64,8 @@ function loadSelectedBoard() {
 
 function startGame() {
   local?.setItem(SHOW_INTRO_KEY, String(showIntro.value))
-  act({ type: 'startGame', intro: showIntro.value })
+  local?.setItem(EMOJI_ON_PHONES_KEY, String(emojiOnPhones.value))
+  act({ type: 'startGame', intro: showIntro.value, emojiOnPhones: emojiOnPhones.value })
 }
 
 function openPractice() {
@@ -185,6 +187,10 @@ onUnmounted(() => {
             <label class="check">
               <input v-model="showIntro" type="checkbox" />
               Show introduction &amp; practice buzz first
+            </label>
+            <label class="check">
+              <input v-model="emojiOnPhones" type="checkbox" />
+              Show the buzz emoji on phones too (fair for players watching a video call)
             </label>
             <button class="primary" :disabled="!board" @click="startGame">
               Start game with {{ game.players.length }} player(s)

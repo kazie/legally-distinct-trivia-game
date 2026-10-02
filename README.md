@@ -13,7 +13,7 @@ Built with Vue 3 + Vite + TypeScript. Live communication runs through the WebSoc
 | `/`            | everyone      | Join with a room code, host a new game, open the editor                       |
 | `/host/:room`  | the host      | Control panel: pick clues, see answers, open buzzers, judge, adjust scores    |
 | `/board/:room` | TV/projector  | Shared display: board, clues, **name of whoever buzzed first**, scores, join QR |
-| `/play/:room`  | each player   | Phone buzzer, Daily Double / final wagers, final answer                       |
+| `/play/:room`  | each player   | Phone buzzer, audio clues, Daily Double / final wagers, final answer          |
 | `/editor`      | whoever writes questions | Create and edit boards, import/export JSON                         |
 
 ## Running it
@@ -43,11 +43,14 @@ The bridge URL defaults to `ws://<page host>:8080/ws`. To use another one, set `
 1. **Lobby:** the host picks a board. Players join with a name.
    **Intro** (optional, on by default): the board screen explains the rules, and the host runs practice buzzes
    (Space) so everyone learns to tap the emoji shown on the TV. It shows who tapped fastest, and no points are scored.
+   **Emoji on phones** (optional, off by default): phones show the emoji to tap as well. Turn it on when some
+   players follow the TV over a video call, since screen sharing lags by a second or two.
 2. **Board:** the host picks a clue, usually the one named by the player in control (★).
 3. **Clue:** the host reads it, then presses **Open buzzers** (Space). The board screen shows a random emoji,
    and players buzz by tapping that emoji on the 3×3 pad on their phone. The pad is the same for everyone. A
    wrong emoji, or a tap before buzzers open, stuns the player for 200 ms. The first correct buzz wins, and
-   that player's name goes up on the board screen and on every phone.
+   that player's name goes up on the board screen and on every phone. Audio clues also get a player on every
+   phone, so remote players can hear them properly. Pictures and video are only on the board screen.
 4. **Judge:** **Correct** (C) adds the value and hands over control. **Incorrect** (X) subtracts it, locks
    that player out of this clue, and lets the host reopen buzzers for everyone else. **Reveal** (R) shows
    the answer when nobody gets it. **Enter** goes back to the board. **Z** undoes the last host action.

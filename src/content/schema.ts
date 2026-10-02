@@ -11,6 +11,11 @@ export const MediaSchema = z.object({
   src: MediaSrcSchema,
 })
 
+/** Media also arrives over the network, so screens check it again before rendering. */
+export function safeMedia(media: Media | null | undefined): Media | null {
+  return media && MediaSrcSchema.safeParse(media.src).success ? media : null
+}
+
 export const ClueSchema = z.object({
   value: z.number().int().positive(),
   clue: z.string().trim().min(1, 'Clue text is required'),

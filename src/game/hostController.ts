@@ -208,9 +208,10 @@ export class HostController {
       if (!raw) return null
       const saved = JSON.parse(raw) as GameState
       if (saved.roomCode !== roomCode) return null
-      // Games saved before the intro and the game-wide buzz counter existed.
+      // Games saved before the intro, the game-wide buzz counter and emoji on phones existed.
       saved.practice ??= null
       saved.buzzRound ??= saved.current?.attempt ?? 0
+      saved.emojiOnPhones ??= false
       // Buzzes that raced a reload are gone.
       return settleBuzzers(saved)
     } catch {

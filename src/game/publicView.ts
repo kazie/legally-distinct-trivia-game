@@ -39,6 +39,7 @@ export function toPublicState(state: GameState, now: number): PublicState {
     current: publicCurrent(state),
     final: publicFinal(state),
     practice: publicPractice(state),
+    emojiOnPhones: state.emojiOnPhones,
     hostTime: now,
   }
 }

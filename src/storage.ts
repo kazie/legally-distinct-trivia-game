@@ -24,6 +24,7 @@ export const session = safe(() => sessionStorage)
 export const LAST_NAME_KEY = 'ldtg:lastName'
 export const LAST_HOST_ROOM_KEY = 'ldtg:lastHostRoom'
 export const SHOW_INTRO_KEY = 'ldtg:showIntro'
+export const EMOJI_ON_PHONES_KEY = 'ldtg:emojiOnPhones'
 
 export interface Storages {
   local: KeyValueStorage | null

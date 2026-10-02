@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { MediaSrcSchema, type Media } from '@/content/schema'
+import { safeMedia as checkMedia, type Media } from '@/content/schema'
 
 const props = defineProps<{ text: string; media?: Media | null }>()
-// Media also arrives over the network, so check it again before rendering.
-const safeMedia = computed(() => (props.media && MediaSrcSchema.safeParse(props.media.src).success ? props.media : null))
+const safeMedia = computed(() => checkMedia(props.media))
 </script>
 
 <template>

@@ -25,14 +25,14 @@ function run(state: GameState, ...actions: Action[]): GameState {
   return actions.reduce(reduce, state)
 }
 
-function started(intro = false): GameState {
+function started(options: { intro?: boolean; emojiOnPhones?: boolean } = {}): GameState {
   return run(
     createGame('ABCD'),
     { type: 'loadBoard', board, dailyDoubles: pickDailyDoubles(board) },
     { type: 'playerJoined', id: 'p1', name: ' Ann  ', now: 0 },
     { type: 'playerJoined', id: 'p2', name: 'Bob', now: 0 },
     { type: 'playerJoined', id: 'p3', name: 'Cid', now: 0 },
-    { type: 'startGame', intro },
+    { type: 'startGame', ...options },
   )
 }
 
@@ -54,6 +54,11 @@ describe('engine', () => {
     expect(s.players.map((p) => p.name)).toEqual(['Ann', 'Bob', 'Cid'])
     expect(s.control).toBe('p1')
     expect(s.dailyDoubles).toEqual(['0-0-1'])
+  })
+
+  it('shows the buzz emoji on phones only when the host asks for it', () => {
+    expect(toPublicState(started(), 0).emojiOnPhones).toBe(false)
+    expect(toPublicState(started({ emojiOnPhones: true }), 0).emojiOnPhones).toBe(true)
   })
 
   it('returns the same object for actions that do not apply', () => {
@@ -236,7 +241,7 @@ describe('intro practice', () => {
   it('starts in the intro only when asked', () => {
     expect(started().phase).toBe('board')
     expect(started().practice).toBeNull()
-    const s = started(true)
+    const s = started({ intro: true })
     expect(s.phase).toBe('intro')
     expect(s.practice).toMatchObject({ attempt: 0, status: 'reading', hits: [] })
   })
@@ -244,13 +249,13 @@ describe('intro practice', () => {
   it('only opens a practice during the intro with a valid target', () => {
     const board = started()
     expect(reduce(board, { type: 'openPractice', target: T })).toBe(board)
-    const s = started(true)
+    const s = started({ intro: true })
     expect(reduce(s, { type: 'openPractice', target: BUZZ_EMOJIS.length })).toBe(s)
     expect(reduce(s, { type: 'openPractice', target: T }).practice).toMatchObject({ status: 'opening', attempt: 1, target: T })
   })
 
   it('ranks players who tap the right emoji, once each, with reaction times', () => {
-    let s = openPractice(started(true), 10, 1000)
+    let s = openPractice(started({ intro: true }), 10, 1000)
     expect(s.practice!.status).toBe('open')
     s = tap(s, 'p2', 11, 1300)
     s = tap(s, 'p1', 12, 1450)
@@ -266,7 +271,7 @@ describe('intro practice', () => {
   })
 
   it('ignores wrong emojis, stale attempts and buzzes sent before the open message', () => {
-    let s = openPractice(started(true), 10, 1000)
+    let s = openPractice(started({ intro: true }), 10, 1000)
     expect(tap(s, 'p1', 11, 1100, T + 1)).toBe(s)
     expect(tap(s, 'p1', 9, 1100)).toBe(s)
     expect(tap(s, 'nobody', 11, 1100)).toBe(s)
@@ -276,7 +281,7 @@ describe('intro practice', () => {
   })
 
   it('numbers attempts game-wide, and a practice stuck opening can be reopened', () => {
-    let s = openPractice(started(true), 10, 1000)
+    let s = openPractice(started({ intro: true }), 10, 1000)
     expect(s.practice!.attempt).toBe(1)
     // The echo for attempt 2 never arrives (e.g. the bridge was down), so the host presses again.
     s = run(s, { type: 'openPractice', target: 1 }, { type: 'openPractice', target: 2 })
@@ -296,12 +301,12 @@ describe('intro practice', () => {
   })
 
   it('ends the intro on the board and clears practice on reset', () => {
-    let s = openPractice(started(true), 10, 1000)
+    let s = openPractice(started({ intro: true }), 10, 1000)
     s = reduce(s, { type: 'endIntro' })
     expect(s.phase).toBe('board')
     expect(s.practice).toBeNull()
     expect(toPublicState(s, 0).practice).toBeNull()
-    s = run(started(true), { type: 'resetToLobby' })
+    s = run(started({ intro: true }), { type: 'resetToLobby' })
     expect(s.phase).toBe('lobby')
     expect(s.practice).toBeNull()
   })

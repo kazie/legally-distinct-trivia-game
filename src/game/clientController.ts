@@ -97,6 +97,12 @@ export class ClientController {
     return !cur.lockedOut.includes(this.playerId) && !this.hasBuzzed.value
   })
 
+  /** The emoji to tap, for the phone to show itself when the host turned on emoji on phones. */
+  readonly phoneTarget = computed((): number | null => {
+    if (!this.state.value?.emojiOnPhones || !this.buzzersOpen.value) return null
+    return this.buzzable.value?.target ?? null
+  })
+
   constructor(options: ClientControllerOptions) {
     this.bridge = options.bridge
     this.roomCode = options.roomCode

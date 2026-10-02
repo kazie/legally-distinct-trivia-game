@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import BuzzPad, { type BuzzPadMode } from '@/components/BuzzPad.vue'
 import ConnectionBadge from '@/components/ConnectionBadge.vue'
 import Scoreboard from '@/components/Scoreboard.vue'
+import { safeMedia } from '@/content/schema'
 import { formatSeconds } from '@/game/buzzPad'
 import { ClientController } from '@/game/clientController'
 import { useBridge } from '@/net/useBridge'
@@ -12,7 +13,8 @@ const props = defineProps<{ room: string }>()
 
 const { local, session } = useStorages()
 const client = new ClientController({ bridge: useBridge(), roomCode: props.room, role: 'player', storage: session })
-const { state, me, connection, hostOnline, joinedName, canBuzz, hasBuzzed, stunned, buzzWinnerName, practiceHit } = client
+const { state, me, connection, hostOnline, joinedName, canBuzz, hasBuzzed, stunned, buzzWinnerName, practiceHit, phoneTarget } =
+  client
 
 const nameInput = ref(joinedName.value ?? local?.getItem(LAST_NAME_KEY) ?? '')
 const wagerInput = ref<number | null>(null)
@@ -28,6 +30,14 @@ const controlName = computed(() => client.nameOf(state.value?.control ?? null))
 const eligibleForFinal = computed(() => final.value?.eligible.includes(client.playerId) ?? false)
 const finalRemaining = computed(() => client.remainingMs(final.value?.answerEndsAt ?? null))
 const ranking = computed(() => [...(state.value?.players ?? [])].sort((a, b) => b.score - a.score))
+const emojiOnPhones = computed(() => state.value?.emojiOnPhones ?? false)
+/** Audio plays on every phone too: sound shared over a video call is often missing or poor. Pictures stay on the TV. */
+const audioSrc = computed(() => {
+  const media = safeMedia(cur.value?.media)
+  return media?.type === 'audio' ? media.src : null
+})
+/** The target strip above the pad, when phones show the emoji too. */
+const padTarget = computed(() => (emojiOnPhones.value ? phoneTarget.value : undefined))
 
 function join() {
   local?.setItem(LAST_NAME_KEY, nameInput.value.trim())
@@ -62,7 +72,7 @@ const pad = computed((): { mode: BuzzPadMode; label: string | null; sublabel: st
   if (stunned.value) return { mode: 'stunned', label: stunReason.value, sublabel: null }
   if (hasBuzzed.value) return { mode: 'buzzed', label: 'Buzzed…', sublabel: null }
   if (canBuzz.value) return { mode: 'ready', label: null, sublabel: null }
-  return { mode: 'waiting', label: 'Get ready…', sublabel: 'Tap the emoji shown on the TV' }
+  return { mode: 'waiting', label: 'Get ready…', sublabel: emojiOnPhones.value ? 'Tap the emoji shown above' : 'Tap the emoji shown on the TV' }
 })
 
 function sendWager(kind: 'daily' | 'final') {
@@ -149,9 +159,12 @@ onUnmounted(() => {
       <template v-else-if="phase === 'intro'">
         <div class="panel center">
           <h2>Practice round</h2>
-          <p class="muted">When an emoji shows up on the TV, tap the same one here. Wrong or too early blocks you for a moment.</p>
+          <p class="muted">
+            When an emoji shows up {{ emojiOnPhones ? 'above the pad' : 'on the TV' }}, tap the same one here. Wrong or too early
+            blocks you for a moment.
+          </p>
         </div>
-        <BuzzPad :mode="pad.mode" :label="pad.label" :sublabel="pad.sublabel" @press="press" />
+        <BuzzPad :mode="pad.mode" :label="pad.label" :sublabel="pad.sublabel" :target="padTarget" @press="press" />
       </template>
 
       <div v-else-if="phase === 'board'" class="panel center">
@@ -166,6 +179,7 @@ onUnmounted(() => {
           <div class="muted">{{ cur.category }}</div>
           <div class="value clue-value">{{ cur.dailyDouble ? 'DAILY DOUBLE' : cur.value }}</div>
           <p v-if="cur.text" class="clue-text serif">{{ cur.text }}</p>
+          <audio v-if="audioSrc" :key="cur.id" :src="audioSrc" controls preload="none" class="clue-audio" />
         </div>
 
         <div v-if="cur.status === 'dd_wager'" class="panel stack center">
@@ -187,7 +201,14 @@ onUnmounted(() => {
         </div>
 
         <!-- Stays mounted (and the same size) for the whole clue, so nothing jumps between states. -->
-        <BuzzPad v-else-if="!cur.dailyDouble" :mode="pad.mode" :label="pad.label" :sublabel="pad.sublabel" @press="press" />
+        <BuzzPad
+          v-else-if="!cur.dailyDouble"
+          :mode="pad.mode"
+          :label="pad.label"
+          :sublabel="pad.sublabel"
+          :target="padTarget"
+          @press="press"
+        />
 
         <div v-if="cur.status === 'revealed'" class="panel center">
           <div class="muted">Answer</div>
@@ -296,6 +317,10 @@ onUnmounted(() => {
 }
 .timer {
   font-size: 2.4rem;
+}
+.clue-audio {
+  width: 100%;
+  margin-top: 0.6rem;
 }
 .answering {
   display: grid;

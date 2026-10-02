@@ -31,4 +31,8 @@ The real `PlayerView`, signed in as **Ann**, in a game room on an in-memory brid
 Bob and Cid are bots: they buzz 2.5–5 s after buzzers open and place wagers on their own.
 In *Clue: buzzers open* the TV would show 😹, so tap 😹 on the pad (or press 3) to win the race. A wrong
 emoji, or tapping before buzzers open, stuns you for 200 ms.
+
+In *Clue: buzzers open, emoji on phones* the host turned on the lobby option for players on a video call:
+the emoji to tap shows above the pad, so nobody has to wait for a delayed stream of the TV.
+*Clue: audio* plays the clue's sound on the phone too. Pictures stay on the TV.
 </docs>

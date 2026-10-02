@@ -27,16 +27,16 @@ function run(state: GameState, actions: Action[]): GameState {
   return actions.reduce(reduce, state)
 }
 
-function lobby(players = true): GameState {
+function lobby(players = true, b = board): GameState {
   const now = Date.now()
   return run(createGame(DEMO_ROOM), [
-    { type: 'loadBoard', board, dailyDoubles: ['0-1-3', '1-1-2', '1-3-4'] },
+    { type: 'loadBoard', board: b, dailyDoubles: ['0-1-3', '1-1-2', '1-3-4'] },
     ...(players ? PLAYERS.map((p): Action => ({ type: 'playerJoined', id: p.id, name: p.name, now })) : []),
   ])
 }
 
-function midRound(): GameState {
-  const s = run(lobby(), [{ type: 'startGame' }])
+function midRound(b = board): GameState {
+  const s = run(lobby(true, b), [{ type: 'startGame' }])
   // A few clues already played.
   s.used = ['0-0-0', '0-0-1', '0-1-0', '0-2-0', '0-2-1', '0-3-0', '0-4-0', '0-4-2']
   s.players[0]!.score = 1400
@@ -69,6 +69,32 @@ function clue(): GameState {
   return run(midRound(), [{ type: 'selectClue', ref: CLUE }])
 }
 
+/** A short-ish Commons recording (MP3 transcode, so it plays in every browser). */
+export const DEMO_AUDIO =
+  'https://upload.wikimedia.org/wikipedia/commons/transcoded/2/24/Mozart_-_Eine_kleine_Nachtmusik_-_1._Allegro.ogg/Mozart_-_Eine_kleine_Nachtmusik_-_1._Allegro.ogg.mp3'
+
+/** The sample board has no audio, so this copy swaps one into Food & Drink, 800. */
+const AUDIO_CLUE = { round: 0, category: 2, clue: 3 }
+const audioBoard = (() => {
+  const b = structuredClone(board)
+  b.rounds[AUDIO_CLUE.round]!.categories[AUDIO_CLUE.category]!.clues[AUDIO_CLUE.clue] = {
+    value: 800,
+    clue: 'Name the composer of this little night music',
+    answer: 'Wolfgang Amadeus Mozart',
+    media: { type: 'audio', src: DEMO_AUDIO },
+  }
+  return BoardSchema.parse(b)
+})()
+
+function audioClue(): GameState {
+  return run(midRound(audioBoard), [{ type: 'selectClue', ref: AUDIO_CLUE }])
+}
+
+/** The clue, in a game where phones show the emoji to tap too (for players on a video call). */
+function clueEmojiOnPhones(): GameState {
+  return run(lobby(), [{ type: 'startGame', emojiOnPhones: true }, { type: 'selectClue', ref: CLUE }])
+}
+
 function answering(by = BOB): GameState {
   return run(clue(), [
     { type: 'openBuzzers', target: DEMO_TARGET },
@@ -99,6 +125,11 @@ export const scenarios = {
   Board: () => ({ state: midRound() }),
   'Clue: reading': () => ({ state: clue() }),
   'Clue: buzzers open': () => ({ state: clue(), live: [{ type: 'openBuzzers', target: DEMO_TARGET }] }),
+  'Clue: buzzers open, emoji on phones': () => ({
+    state: clueEmojiOnPhones(),
+    live: [{ type: 'openBuzzers', target: DEMO_TARGET }],
+  }),
+  'Clue: audio': () => ({ state: audioClue() }),
   'Clue: Bob answering': () => ({ state: answering(BOB) }),
   'Clue: Ann answering': () => ({ state: answering(ANN) }),
   'Clue: Bob was wrong': () => ({ state: run(answering(BOB), [{ type: 'judge', correct: false }]) }),

@@ -8,12 +8,20 @@ defineProps<{
   /** Shown on top of the grid; the pad keeps its size whatever the text. */
   label?: string | null
   sublabel?: string | null
+  /**
+   * Emoji to tap (index into BUZZ_EMOJIS), shown in a strip above the grid. `null` keeps the strip empty,
+   * so the pad doesn't move when the emoji appears; leave it out for no strip at all.
+   */
+  target?: number | null
 }>()
 
 const emit = defineEmits<{ press: [index: number] }>()
 </script>
 
 <template>
+  <div v-if="target !== undefined" class="buzz-target" aria-live="assertive">
+    {{ target === null ? '' : BUZZ_EMOJIS[target] }}
+  </div>
   <div class="pad" :class="mode">
     <div class="grid">
       <button
@@ -36,6 +44,13 @@ const emit = defineEmits<{ press: [index: number] }>()
 </template>
 
 <style scoped>
+.buzz-target {
+  height: 4.5rem;
+  display: grid;
+  place-items: center;
+  font-size: 3.6rem;
+  line-height: 1;
+}
 .pad {
   position: relative;
   width: min(100%, 52vh);

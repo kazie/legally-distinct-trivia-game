@@ -98,6 +98,8 @@ export interface GameState {
   practice: Practice | null
   /** Counts every buzzer opening in the game. Never goes back, not even on undo, so attempts are never reused. */
   buzzRound: number
+  /** Phones show the emoji to tap too, so remote players watching a delayed stream of the TV aren't behind. */
+  emojiOnPhones: boolean
 }
 
 /* ---------- What gets broadcast to players and the board screen (no unrevealed answers) ---------- */
@@ -176,5 +178,6 @@ export interface PublicState {
   current: PublicCurrentClue | null
   final: PublicFinal | null
   practice: PublicPractice | null
+  emojiOnPhones: boolean
   hostTime: number
 }
