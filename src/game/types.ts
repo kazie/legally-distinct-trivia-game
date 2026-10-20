@@ -1,4 +1,5 @@
 import type { Board, Media } from '@/content/schema'
+import type { GameSettings } from './settings'
 
 export interface Player {
   id: string
@@ -40,6 +41,21 @@ export interface BuzzWindow {
   openSeq: number | null
   /** Index into BUZZ_EMOJIS that players must tap to buzz in this attempt. */
   target: number | null
+  /** Host clock time until which a player can't buzz, after a false start. */
+  lockedUntil: Record<string, number>
+}
+
+export interface FalseStart {
+  playerId: string
+  /** Points it cost. */
+  points: number
+}
+
+/** A false start in the game-wide log. */
+export interface LoggedFalseStart extends FalseStart {
+  clueId: string
+  /** Bridge seq of the press: unique, so undo can tell which penalties it already has. */
+  seq: number
 }
 
 export interface CurrentClue extends BuzzWindow {
@@ -98,8 +114,12 @@ export interface GameState {
   practice: Practice | null
   /** Counts every buzzer opening in the game. Never goes back, not even on undo, so attempts are never reused. */
   buzzRound: number
-  /** Phones show the emoji to tap too, so remote players watching a delayed stream of the TV aren't behind. */
-  emojiOnPhones: boolean
+  settings: GameSettings
+  /**
+   * Every false start this game, in order. Players were told what it cost them right away, so these
+   * penalties survive the host's undo (see `HostController.undo`).
+   */
+  falseStarts: LoggedFalseStart[]
 }
 
 /* ---------- What gets broadcast to players and the board screen (no unrevealed answers) ---------- */
@@ -118,7 +138,7 @@ export interface PublicCurrentClue {
   attempt: number
   /** Emoji to tap (index into BUZZ_EMOJIS); only present while buzzers are opening or open. */
   target: number | null
-  /** Hidden while a Daily Double wager is pending. */
+  /** Hidden while a Daily Double wager is pending, and while someone answers in quick draw. */
   text: string | null
   media: Media | null
   /** Only present once revealed. */
@@ -128,6 +148,8 @@ export interface PublicCurrentClue {
   correctPlayer: string | null
   ddPlayer: string | null
   ddMaxWager: number | null
+  lockedUntil: Record<string, number>
+  falseStarts: FalseStart[]
 }
 
 export interface PublicFinal {
@@ -153,6 +175,7 @@ export interface PublicPractice {
   /** Only present while buzzers are opening or open. */
   target: number | null
   hits: PracticeHit[]
+  lockedUntil: Record<string, number>
 }
 
 export interface PublicPlayer {
@@ -178,6 +201,6 @@ export interface PublicState {
   current: PublicCurrentClue | null
   final: PublicFinal | null
   practice: PublicPractice | null
-  emojiOnPhones: boolean
+  settings: GameSettings
   hostTime: number
 }

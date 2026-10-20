@@ -5,6 +5,7 @@
 import sample from '../../boards/sample.json'
 import { BoardSchema } from '@/content/schema'
 import { createGame, PRACTICE_ID, reduce, type Action } from '@/game/engine'
+import type { GameSettings } from '@/game/settings'
 import type { GameState } from '@/game/types'
 
 export const DEMO_ROOM = 'DEMO'
@@ -35,8 +36,11 @@ function lobby(players = true, b = board): GameState {
   ])
 }
 
-function midRound(b = board): GameState {
-  const s = run(lobby(true, b), [{ type: 'startGame' }])
+const EMOJI: Partial<GameSettings> = { buzzStyle: 'emoji' }
+const QUICK_DRAW: Partial<GameSettings> = { openMode: 'instant' }
+
+function midRound(b = board, settings: Partial<GameSettings> = {}): GameState {
+  const s = run(lobby(true, b), [{ type: 'startGame', settings }])
   // A few clues already played.
   s.used = ['0-0-0', '0-0-1', '0-1-0', '0-2-0', '0-2-1', '0-3-0', '0-4-0', '0-4-2']
   s.players[0]!.score = 1400
@@ -46,8 +50,8 @@ function midRound(b = board): GameState {
   return s
 }
 
-function intro(): GameState {
-  return run(lobby(), [{ type: 'startGame', intro: true }])
+function intro(settings: Partial<GameSettings> = {}): GameState {
+  return run(lobby(), [{ type: 'startGame', intro: true, settings }])
 }
 
 function practiceResults(): GameState {
@@ -65,8 +69,22 @@ const CLUE_ID = '0-2-2'
 /** The emoji (index into BUZZ_EMOJIS) players must tap in the scenarios. */
 export const DEMO_TARGET = 2
 
-function clue(): GameState {
-  return run(midRound(), [{ type: 'selectClue', ref: CLUE }])
+function clue(settings: Partial<GameSettings> = {}): GameState {
+  return run(midRound(board, settings), [{ type: 'selectClue', ref: CLUE }])
+}
+
+/** Ann pressed the big button while the host was still reading. */
+function falseStart(): GameState {
+  return run(clue(), [{ type: 'buzz', playerId: ANN, clueId: CLUE_ID, attempt: 0, seq: 1, now: Date.now() }])
+}
+
+/** Quick draw: buzzers opened with the clue, Bob buzzed, and the clue is hidden while he answers. */
+function quickDrawAnswering(): GameState {
+  return run(midRound(board, QUICK_DRAW), [
+    { type: 'selectClue', ref: CLUE, target: DEMO_TARGET },
+    { type: 'buzzersOpened', clueId: CLUE_ID, attempt: 1, seq: 1, now: 0 },
+    { type: 'buzz', playerId: BOB, clueId: CLUE_ID, attempt: 1, seq: 2, now: 0 },
+  ])
 }
 
 /** A short-ish Commons recording (MP3 transcode, so it plays in every browser). */
@@ -92,7 +110,7 @@ function audioClue(): GameState {
 
 /** The clue, in a game where phones show the emoji to tap too (for players on a video call). */
 function clueEmojiOnPhones(): GameState {
-  return run(lobby(), [{ type: 'startGame', emojiOnPhones: true }, { type: 'selectClue', ref: CLUE }])
+  return clue({ ...EMOJI, emojiOnPhones: true })
 }
 
 function answering(by = BOB): GameState {
@@ -120,16 +138,26 @@ export const scenarios = {
   'Lobby (empty)': () => ({ state: lobby(false) }),
   Lobby: () => ({ state: lobby() }),
   Intro: () => ({ state: intro() }),
+  'Intro: emoji pad': () => ({ state: intro(EMOJI) }),
+  'Intro: quick draw': () => ({ state: intro(QUICK_DRAW) }),
   'Intro: practice open': () => ({ state: intro(), live: [{ type: 'openPractice', target: DEMO_TARGET }] }),
+  'Intro: practice open, emoji pad': () => ({ state: intro(EMOJI), live: [{ type: 'openPractice', target: DEMO_TARGET }] }),
   'Intro: practice results': () => ({ state: practiceResults() }),
   Board: () => ({ state: midRound() }),
   'Clue: reading': () => ({ state: clue() }),
   'Clue: buzzers open': () => ({ state: clue(), live: [{ type: 'openBuzzers', target: DEMO_TARGET }] }),
+  'Clue: Ann jumped the gun': () => ({ state: falseStart() }),
+  'Clue: buzzers open, emoji pad': () => ({ state: clue(EMOJI), live: [{ type: 'openBuzzers', target: DEMO_TARGET }] }),
   'Clue: buzzers open, emoji on phones': () => ({
     state: clueEmojiOnPhones(),
     live: [{ type: 'openBuzzers', target: DEMO_TARGET }],
   }),
   'Clue: audio': () => ({ state: audioClue() }),
+  'Clue: quick draw, buzzers open': () => ({
+    state: midRound(board, QUICK_DRAW),
+    live: [{ type: 'selectClue', ref: CLUE, target: DEMO_TARGET }],
+  }),
+  'Clue: quick draw, Bob answering': () => ({ state: quickDrawAnswering() }),
   'Clue: Bob answering': () => ({ state: answering(BOB) }),
   'Clue: Ann answering': () => ({ state: answering(ANN) }),
   'Clue: Bob was wrong': () => ({ state: run(answering(BOB), [{ type: 'judge', correct: false }]) }),

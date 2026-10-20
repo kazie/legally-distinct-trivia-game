@@ -24,7 +24,9 @@ export const session = safe(() => sessionStorage)
 export const LAST_NAME_KEY = 'ldtg:lastName'
 export const LAST_HOST_ROOM_KEY = 'ldtg:lastHostRoom'
 export const SHOW_INTRO_KEY = 'ldtg:showIntro'
+/** Before game settings existed; still read once so a host keeps their choice. */
 export const EMOJI_ON_PHONES_KEY = 'ldtg:emojiOnPhones'
+export const SETTINGS_KEY = 'ldtg:settings'
 
 export interface Storages {
   local: KeyValueStorage | null

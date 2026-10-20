@@ -1,10 +1,11 @@
 import type { Board } from '@/content/schema'
 import { isBuzzTarget } from './buzzPad'
-import type { BuzzWindow, ClueRef, CurrentClue, GameState, Player } from './types'
+import { DEFAULT_SETTINGS, falseStartPoints, normalizeSettings, type GameSettings } from './settings'
+import type { BuzzWindow, ClueRef, CurrentClue, FalseStart, GameState, Player } from './types'
 
 export type Action =
   | { type: 'loadBoard'; board: Board; dailyDoubles: string[] }
-  | { type: 'startGame'; intro?: boolean; emojiOnPhones?: boolean }
+  | { type: 'startGame'; intro?: boolean; settings?: Partial<GameSettings> }
   | { type: 'resetToLobby' }
   | { type: 'playerJoined'; id: string; name: string; now: number }
   | { type: 'playerSeen'; id: string; now: number }
@@ -12,17 +13,19 @@ export type Action =
   | { type: 'renamePlayer'; id: string; name: string }
   | { type: 'adjustScore'; id: string; delta: number }
   | { type: 'setControl'; id: string | null }
-  | { type: 'selectClue'; ref: ClueRef }
+  /** `target`: the emoji to open buzzers with right away in quick draw. */
+  | { type: 'selectClue'; ref: ClueRef; target?: number }
   | { type: 'setDdPlayer'; id: string }
   | { type: 'setDdWager'; id: string; amount: number }
   | { type: 'showDdClue' }
   | { type: 'openBuzzers'; target: number }
   | { type: 'buzzersOpened'; clueId: string; attempt: number; seq: number; now: number }
-  | { type: 'buzz'; playerId: string; clueId: string; attempt: number; seq: number; emoji: number; now: number }
+  | { type: 'buzz'; playerId: string; clueId: string; attempt: number; seq: number; emoji?: number; now: number }
   | { type: 'openPractice'; target: number }
   | { type: 'endIntro' }
   | { type: 'closeBuzzers' }
-  | { type: 'judge'; correct: boolean }
+  /** `target`: the emoji to reopen buzzers with right away after a wrong answer in quick draw. */
+  | { type: 'judge'; correct: boolean; target?: number }
   | { type: 'revealAnswer' }
   | { type: 'returnToBoard' }
   | { type: 'endRound' }
@@ -61,7 +64,8 @@ export function createGame(roomCode: string): GameState {
     final: null,
     practice: null,
     buzzRound: 0,
-    emojiOnPhones: false,
+    settings: { ...DEFAULT_SETTINGS },
+    falseStarts: [],
   }
 }
 
@@ -167,6 +171,33 @@ function windowFor(s: GameState, id: string): BuzzWindow | null {
 }
 
 /**
+ * A big-button press before the buzzers opened: blocks the player for a moment and, on a clue, costs a share
+ * of its value. Messages reach the host in bridge order, so a press seen while still `opening` was sent before
+ * the `buzzers_open` message: it is early too.
+ *
+ * A press seen while `closed` is not: it may have been sent while the buzzers were open and arrived just after
+ * the host closed them (or ruled a wrong answer), and nothing tells the two apart. Those are ignored.
+ */
+function falseStart(s: GameState, w: BuzzWindow, playerId: string, seq: number, now: number): boolean {
+  if (w.status !== 'reading' && w.status !== 'opening') return false
+  const cur = s.current
+  const onClue = w !== s.practice
+  if (onClue && (!cur || cur.dailyDouble || s.settings.openMode !== 'host')) return false
+  w.lockedUntil[playerId] = now + s.settings.lockoutMs
+  if (onClue && cur) {
+    const points = falseStartPoints(s.settings, cur.value)
+    findPlayer(s, playerId)!.score -= points
+    s.falseStarts.push({ clueId: cur.id, playerId, points, seq })
+  }
+  return true
+}
+
+/** The false starts on one clue, in order. */
+export function falseStartsOn(s: GameState, id: string): FalseStart[] {
+  return s.falseStarts.filter((f) => f.clueId === id).map(({ playerId, points }) => ({ playerId, points }))
+}
+
+/**
  * Pure game reducer. Returns the same object when the action does not apply,
  * so callers can cheaply detect no-ops (e.g. a late or duplicate buzz).
  */
@@ -188,14 +219,15 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
     case 'startGame':
       if (s.phase !== 'lobby' || !s.board) return false
       s.phase = action.intro ? 'intro' : 'board'
-      s.emojiOnPhones = !!action.emojiOnPhones
+      s.settings = normalizeSettings(action.settings)
+      s.falseStarts = []
       s.round = 0
       s.used = []
       s.current = null
       s.final = null
       s.control = s.control ?? s.players[0]?.id ?? null
       s.practice = action.intro
-        ? { status: 'reading', attempt: 0, openSeq: null, target: null, openedAt: 0, hits: [] }
+        ? { status: 'reading', attempt: 0, openSeq: null, target: null, lockedUntil: {}, openedAt: 0, hits: [] }
         : null
       return true
 
@@ -221,6 +253,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       s.current = null
       s.final = null
       s.practice = null
+      s.falseStarts = []
       s.players.forEach((p) => (p.score = 0))
       return true
 
@@ -293,11 +326,16 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
         attempt: 0,
         openSeq: null,
         target: null,
+        lockedUntil: {},
         buzzWinner: null,
         lockedOut: [],
         correctPlayer: null,
         ddPlayer: dailyDouble && findPlayer(s, s.control) ? s.control : null,
         ddWager: null,
+      }
+      // Quick draw: no waiting for the host to read, buzzers open with the clue.
+      if (!dailyDouble && s.settings.openMode === 'instant' && action.target !== undefined && isBuzzTarget(action.target)) {
+        openWindow(s, s.current, action.target)
       }
       return true
     }
@@ -338,16 +376,23 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
 
     case 'buzz': {
       const w = windowFor(s, action.clueId)
-      if (w?.status !== 'open' || w.attempt !== action.attempt || w.openSeq === null || action.seq <= w.openSeq) return false
-      if (action.emoji !== w.target || !findPlayer(s, action.playerId)) return false
-      if (w === s.practice) {
-        if (s.practice.hits.some((h) => h.playerId === action.playerId)) return false
-        s.practice.hits.push({ playerId: action.playerId, ms: Math.max(0, action.now - s.practice.openedAt) })
+      const id = action.playerId
+      if (!w || !findPlayer(s, id) || (w.lockedUntil[id] ?? 0) > action.now) return false
+      const practicing = w === s.practice
+      if (practicing ? s.practice!.hits.some((h) => h.playerId === id) : !cur || cur.lockedOut.includes(id)) return false
+      const open = w.status === 'open' && w.attempt === action.attempt && w.openSeq !== null && action.seq > w.openSeq
+      if (s.settings.buzzStyle === 'button') {
+        if (!open) return falseStart(s, w, id, action.seq, action.now)
+      } else if (!open || action.emoji !== w.target) {
+        // Emoji pads stun themselves for early or wrong taps; only right taps ever count here.
+        return false
+      }
+      if (practicing) {
+        s.practice!.hits.push({ playerId: id, ms: Math.max(0, action.now - s.practice!.openedAt) })
         return true
       }
-      if (!cur || cur.lockedOut.includes(action.playerId)) return false
-      cur.status = 'answering'
-      cur.buzzWinner = action.playerId
+      cur!.status = 'answering'
+      cur!.buzzWinner = id
       return true
     }
 
@@ -371,6 +416,8 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
         cur.buzzWinner = null
         const anyoneLeft = s.players.some((p) => !cur.lockedOut.includes(p.id))
         cur.status = cur.dailyDouble || !anyoneLeft ? 'revealed' : 'closed'
+        const reopen = s.settings.openMode === 'instant' && action.target !== undefined && isBuzzTarget(action.target)
+        if (cur.status === 'closed' && reopen) openWindow(s, cur, action.target!)
       }
       return true
     }

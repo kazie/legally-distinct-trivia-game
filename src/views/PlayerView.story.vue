@@ -29,8 +29,13 @@ import { ANN, BOB, CID, scenarioNames } from '@/dev/scenarios'
 
 The real `PlayerView`, signed in as **Ann**, in a game room on an in-memory bridge.
 Bob and Cid are bots: they buzz 2.5–5 s after buzzers open and place wagers on their own.
-In *Clue: buzzers open* the TV would show 😹, so tap 😹 on the pad (or press 3) to win the race. A wrong
-emoji, or tapping before buzzers open, stuns you for 200 ms.
+In *Clue: buzzers open* press the big button (or Space) to win the race. Pressing in *Clue: reading* is a
+false start: it costs half the clue's value and blocks you for a second.
+
+In *Clue: buzzers open, emoji pad* the TV would show 😹, so tap 😹 on the pad (or press 3). A wrong emoji, or
+tapping before buzzers open, blocks you for a second.
+
+In *Clue: quick draw, Bob answering* the clue is hidden while Bob answers from memory.
 
 In *Clue: buzzers open, emoji on phones* the host turned on the lobby option for players on a video call:
 the emoji to tap shows above the pad, so nobody has to wait for a delayed stream of the TV.

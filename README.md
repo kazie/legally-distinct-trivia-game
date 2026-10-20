@@ -40,17 +40,14 @@ The bridge URL defaults to `ws://<page host>:8080/ws`. To use another one, set `
 
 ## How a game plays
 
-1. **Lobby:** the host picks a board. Players join with a name.
+1. **Lobby:** the host picks a board and the buzzer options (below). Players join with a name.
    **Intro** (optional, on by default): the board screen explains the rules, and the host runs practice buzzes
-   (Space) so everyone learns to tap the emoji shown on the TV. It shows who tapped fastest, and no points are scored.
-   **Emoji on phones** (optional, off by default): phones show the emoji to tap as well. Turn it on when some
-   players follow the TV over a video call, since screen sharing lags by a second or two.
+   (Space) so everyone learns how to buzz. It shows who was fastest, and no points are scored or lost.
 2. **Board:** the host picks a clue, usually the one named by the player in control (★).
-3. **Clue:** the host reads it, then presses **Open buzzers** (Space). The board screen shows a random emoji,
-   and players buzz by tapping that emoji on the 3×3 pad on their phone. The pad is the same for everyone. A
-   wrong emoji, or a tap before buzzers open, stuns the player for 200 ms. The first correct buzz wins, and
-   that player's name goes up on the board screen and on every phone. Audio clues also get a player on every
-   phone, so remote players can hear them properly. Pictures and video are only on the board screen.
+3. **Clue:** the host reads it, then presses **Open buzzers** (Space), and players race to buzz from their
+   phones. The first buzz wins, and that player's name goes up on the board screen and on every phone. Audio
+   clues also get a player on every phone, so remote players can hear them properly. Pictures and video are
+   only on the board screen.
 4. **Judge:** **Correct** (C) adds the value and hands over control. **Incorrect** (X) subtracts it, locks
    that player out of this clue, and lets the host reopen buzzers for everyone else. **Reveal** (R) shows
    the answer when nobody gets it. **Enter** goes back to the board. **Z** undoes the last host action.
@@ -61,6 +58,27 @@ The bridge URL defaults to `ws://<page host>:8080/ws`. To use another one, set `
    host reveals and judges each response, lowest score first.
 
 The host can also rename or remove players, adjust scores, give control to someone, and end a round early.
+
+### Buzzer options
+
+Set in the lobby; the host's browser remembers them for next time.
+
+- **Buzzer**
+  - **Big button** (default): one big button that lights up when buzzers open. Pressing before that is a
+    **false start**: it costs a share of the clue's value (off / 25% / **50%** / 100%) and blocks the
+    player for the lockout time. The board screen lists who jumped the gun. Presses while the buzzers are
+    closed after a wrong answer don't count either way. The host's undo never refunds a false start.
+  - **Emoji pad**: the board screen shows a random emoji when buzzers open, and players tap that emoji on
+    the 3×3 pad on their phone (the same pad for everyone). A wrong emoji or a tap before buzzers open
+    blocks the player for the lockout time, but costs no points.
+    **Emoji on phones** (off by default): phones show the emoji to tap as well. Turn it on when some players
+    follow the TV over a video call, since screen sharing lags by a second or two.
+- **Pace**
+  - **Host opens buzzers** (default): as above, the host reads the clue first.
+  - **Quick draw**: buzzers open as soon as the clue appears, and the clue disappears from the board screen
+    and phones while someone answers. Buzz early and you answer from memory. After a wrong answer the clue
+    comes back and buzzers reopen for everyone else. Daily Doubles play as usual.
+- **Lockout** (0.25–3 s, default 1 s): how long a false start or a wrong emoji blocks a player.
 
 ## Writing boards
 
@@ -114,7 +132,9 @@ acts as the game server**:
 - **Fair buzzing:** the bridge numbers every message on a topic with an increasing `seq`, and every
   subscriber sees the same order. The host publishes `buzzers_open` and notes its `seq` when the echo
   arrives. The first `buzz` for that clue and attempt with a higher `seq` wins. In other words, the winner
-  is whoever reached the bridge first, and everyone agrees on who that was.
+  is whoever reached the bridge first, and everyone agrees on who that was. With the big button, a `buzz`
+  that arrives before the host has seen its own `buzzers_open` echo is a false start: it was sent first.
+  One that arrives after the host closed the buzzers is ignored, since it may have been sent while they were open.
 - Player identity is a UUID in `sessionStorage`. A reload keeps your score, and separate tabs can be
   separate players, which is handy for testing on one machine.
 

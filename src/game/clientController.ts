@@ -1,10 +1,10 @@
 import { computed, ref, shallowRef } from 'vue'
 import type { BridgeClient, ConnectionStatus } from '@/net/bridgeClient'
-import { STUN_MS } from './buzzPad'
 import { decode, encode, type OutgoingMessage } from '@/net/protocol'
 import { PRACTICE_ID } from './engine'
 import type { KeyValueStorage } from './hostController'
 import { roomTopic } from './roomCode'
+import { DEFAULT_SETTINGS } from './settings'
 import type { PracticeHit, PublicCurrentClue, PublicState } from './types'
 
 export const PING_MS = 5000
@@ -26,7 +26,7 @@ export interface ClientControllerOptions {
 }
 
 /** Whatever the buzz pad currently plays for: the clue on screen, or the intro's practice buzz. */
-export type Buzzable = Pick<PublicCurrentClue, 'id' | 'attempt' | 'status' | 'target' | 'dailyDouble' | 'lockedOut'>
+export type Buzzable = Pick<PublicCurrentClue, 'id' | 'attempt' | 'status' | 'target' | 'dailyDouble' | 'lockedOut' | 'lockedUntil'>
 
 export const PLAYER_ID_KEY = 'ldtg:playerId'
 export const joinedKey = (room: string) => `ldtg:joined:${room}`
@@ -47,8 +47,9 @@ export class ClientController {
   /** Set from the `buzzers_open` message so the button lights up without waiting for the next snapshot. */
   private readonly openedLocally = shallowRef<{ clueId: string; attempt: number } | null>(null)
   private readonly buzzedFor = shallowRef<{ clueId: string; attempt: number } | null>(null)
-  /** Briefly true after tapping the wrong emoji or tapping before buzzers open. */
+  /** True for the configured lockout after tapping the wrong emoji or pressing before buzzers open. */
   readonly stunned = ref(false)
+  private readonly stunEndsAt = ref(0)
   private stunTimer: ReturnType<typeof setTimeout> | null = null
 
   private readonly bridge: BridgeClient
@@ -62,6 +63,7 @@ export class ClientController {
   readonly hostOnline = computed(() => this.lastStateAt.value > 0 && this.clock.value - this.lastStateAt.value < HOST_TIMEOUT_MS)
   readonly me = computed(() => this.state.value?.players.find((p) => p.id === this.playerId) ?? null)
   readonly buzzWinnerName = computed(() => this.nameOf(this.state.value?.current?.buzzWinner ?? null))
+  readonly settings = computed(() => this.state.value?.settings ?? DEFAULT_SETTINGS)
 
   readonly buzzable = computed((): Buzzable | null => {
     const state = this.state.value
@@ -91,15 +93,22 @@ export class ClientController {
     return !!cur && buzzed?.clueId === cur.id && buzzed.attempt === cur.attempt
   })
 
+  /** Lockout left after a false start: this phone's own, or the host's (which survives a reload). */
+  readonly lockMs = computed(() => {
+    const own = this.stunned.value ? Math.max(0, this.stunEndsAt.value - this.clock.value) : 0
+    const host = this.remainingMs(this.buzzable.value?.lockedUntil[this.playerId] ?? null) ?? 0
+    return Math.max(own, host)
+  })
+
   readonly canBuzz = computed(() => {
     const cur = this.buzzable.value
-    if (!cur || !this.me.value || !this.buzzersOpen.value || this.stunned.value) return false
+    if (!cur || !this.me.value || !this.buzzersOpen.value || this.stunned.value || this.lockMs.value > 0) return false
     return !cur.lockedOut.includes(this.playerId) && !this.hasBuzzed.value
   })
 
   /** The emoji to tap, for the phone to show itself when the host turned on emoji on phones. */
   readonly phoneTarget = computed((): number | null => {
-    if (!this.state.value?.emojiOnPhones || !this.buzzersOpen.value) return null
+    if (!this.settings.value.emojiOnPhones || !this.buzzersOpen.value) return null
     return this.buzzable.value?.target ?? null
   })
 
@@ -158,21 +167,34 @@ export class ClientController {
   }
 
   /**
-   * A tap on the buzz pad. The right emoji while buzzers are open buzzes in; the wrong emoji, or any tap
-   * before buzzers open, stuns for STUN_MS. Taps that can't matter (locked out, someone answering…) do nothing.
+   * A press of the big button, or a tap on the emoji pad (`emoji`).
+   * - Buzzers open (and, on the pad, the right emoji): buzzes in.
+   * - Pad: a wrong emoji or any tap before buzzers open blocks this phone for the lockout time.
+   * - Button: a press before buzzers open is a false start. It still goes to the host, which takes the
+   *   penalty points; this phone blocks itself right away so the feedback is instant.
+   * Presses that can't matter (locked out, someone answering, quick draw still opening…) do nothing.
    */
-  press(emoji: number): PressResult {
+  press(emoji?: number): PressResult {
     const cur = this.buzzable.value
-    if (!cur || !this.me.value || cur.dailyDouble || this.stunned.value) return 'ignored'
+    if (!cur || !this.me.value || cur.dailyDouble || this.stunned.value || this.lockMs.value > 0) return 'ignored'
     if (cur.status !== 'reading' && cur.status !== 'closed' && cur.status !== 'opening' && cur.status !== 'open') return 'ignored'
     if (cur.lockedOut.includes(this.playerId) || this.hasBuzzed.value) return 'ignored'
-    if (!this.buzzersOpen.value || emoji !== cur.target) {
-      this.stun()
-      return 'stunned'
+    const button = this.settings.value.buzzStyle === 'button'
+    const buzz = { type: 'buzz', from: 'player', playerId: this.playerId, clueId: cur.id, attempt: cur.attempt } as const
+    if (this.buzzersOpen.value && (button || emoji === cur.target)) {
+      this.buzzedFor.value = { clueId: cur.id, attempt: cur.attempt }
+      this.send(button ? buzz : { ...buzz, emoji })
+      return 'buzzed'
     }
-    this.buzzedFor.value = { clueId: cur.id, attempt: cur.attempt }
-    this.send({ type: 'buzz', from: 'player', playerId: this.playerId, clueId: cur.id, attempt: cur.attempt, emoji })
-    return 'buzzed'
+    if (button) {
+      // Quick draw has no "too early": the clue's buzzers are about to open anyway. While closed (after a wrong
+      // answer) the host can't tell an early press from a late one, so it ignores them: do the same here.
+      if (cur.id !== PRACTICE_ID && this.settings.value.openMode !== 'host') return 'ignored'
+      if (cur.status === 'closed') return 'ignored'
+      this.send(buzz)
+    }
+    this.stun()
+    return 'stunned'
   }
 
   wager(kind: 'daily' | 'final', amount: number): boolean {
@@ -195,11 +217,14 @@ export class ClientController {
   }
 
   private stun() {
+    const ms = this.settings.value.lockoutMs
     this.stunned.value = true
+    this.stunEndsAt.value = this.now() + ms
+    this.clock.value = this.now()
     this.stunTimer = setTimeout(() => {
       this.stunned.value = false
       this.stunTimer = null
-    }, STUN_MS)
+    }, ms)
   }
 
   private greet() {

@@ -3,6 +3,7 @@ import type { Board } from '@/content/schema'
 import { clueId, createGame, ddMaxWager, pickDailyDoubles, PRACTICE_ID, reduce, type Action } from '@/game/engine'
 import { BUZZ_EMOJIS, pickBuzzTarget } from '@/game/buzzPad'
 import { toPublicState } from '@/game/publicView'
+import { DEFAULT_SETTINGS, normalizeSettings, type GameSettings } from '@/game/settings'
 import type { GameState } from '@/game/types'
 
 const board: Board = {
@@ -25,14 +26,14 @@ function run(state: GameState, ...actions: Action[]): GameState {
   return actions.reduce(reduce, state)
 }
 
-function started(options: { intro?: boolean; emojiOnPhones?: boolean } = {}): GameState {
+function started(options: { intro?: boolean; settings?: Partial<GameSettings> } = {}): GameState {
   return run(
     createGame('ABCD'),
     { type: 'loadBoard', board, dailyDoubles: pickDailyDoubles(board) },
     { type: 'playerJoined', id: 'p1', name: ' Ann  ', now: 0 },
     { type: 'playerJoined', id: 'p2', name: 'Bob', now: 0 },
     { type: 'playerJoined', id: 'p3', name: 'Cid', now: 0 },
-    { type: 'startGame', ...options },
+    { type: 'startGame', intro: options.intro, settings: { buzzStyle: 'emoji', ...options.settings } },
   )
 }
 
@@ -57,8 +58,8 @@ describe('engine', () => {
   })
 
   it('shows the buzz emoji on phones only when the host asks for it', () => {
-    expect(toPublicState(started(), 0).emojiOnPhones).toBe(false)
-    expect(toPublicState(started({ emojiOnPhones: true }), 0).emojiOnPhones).toBe(true)
+    expect(toPublicState(started(), 0).settings.emojiOnPhones).toBe(false)
+    expect(toPublicState(started({ settings: { emojiOnPhones: true } }), 0).settings.emojiOnPhones).toBe(true)
   })
 
   it('returns the same object for actions that do not apply', () => {
@@ -309,5 +310,144 @@ describe('intro practice', () => {
     s = run(started({ intro: true }), { type: 'resetToLobby' })
     expect(s.phase).toBe('lobby')
     expect(s.practice).toBeNull()
+  })
+})
+
+describe('game settings', () => {
+  it('defaults to the big button and replaces unknown values with defaults', () => {
+    expect(normalizeSettings(undefined)).toEqual(DEFAULT_SETTINGS)
+    expect(DEFAULT_SETTINGS).toMatchObject({ buzzStyle: 'button', openMode: 'host', falseStartPenalty: 0.5, lockoutMs: 1000 })
+    expect(normalizeSettings({ buzzStyle: 'emoji', lockoutMs: 2000, falseStartPenalty: 0.3, openMode: 'later' })).toEqual({
+      ...DEFAULT_SETTINGS,
+      buzzStyle: 'emoji',
+      lockoutMs: 2000,
+    })
+  })
+})
+
+const B100 = { round: 0, category: 1, clue: 0 }
+const B200 = { round: 0, category: 1, clue: 1 }
+
+/** A big-button press for the clue on screen. */
+function press(s: GameState, playerId: string, seq: number, now = 0, attempt = s.current!.attempt): GameState {
+  return reduce(s, { type: 'buzz', playerId, clueId: s.current!.id, attempt, seq, now })
+}
+
+describe('big button', () => {
+  const button = (settings: Partial<GameSettings> = {}) => started({ settings: { buzzStyle: 'button', ...settings } })
+
+  it('buzzes in without an emoji once buzzers are open, and keeps the emoji off the public state', () => {
+    let s = open(reduce(button(), { type: 'selectClue', ref: B100 }), 10)
+    expect(toPublicState(s, 0).current?.target).toBeNull()
+    s = press(s, 'p2', 11)
+    expect(s.current?.buzzWinner).toBe('p2')
+    expect(s.falseStarts).toEqual([])
+  })
+
+  it('charges a false start a share of the clue value and blocks the player for the lockout', () => {
+    let s = reduce(button({ falseStartPenalty: 0.5, lockoutMs: 1000 }), { type: 'selectClue', ref: B200 })
+    s = press(s, 'p1', 1, 5000)
+    expect(score(s, 'p1')).toBe(-100)
+    expect(s.falseStarts).toEqual([{ clueId: '0-1-1', playerId: 'p1', points: 100, seq: 1 }])
+    expect(toPublicState(s, 0).current?.falseStarts).toEqual([{ playerId: 'p1', points: 100 }])
+    expect(s.current?.lockedUntil.p1).toBe(6000)
+    // Mashing while blocked costs nothing more.
+    expect(press(s, 'p1', 2, 5500)).toBe(s)
+
+    s = open(s, 10)
+    expect(press(s, 'p1', 11, 5999)).toBe(s)
+    s = press(s, 'p1', 12, 6000)
+    expect(s.current?.buzzWinner).toBe('p1')
+    expect(score(s, 'p1')).toBe(-100)
+  })
+
+  it('counts a press while buzzers are still opening as early', () => {
+    let s = run(button(), { type: 'selectClue', ref: B100 }, { type: 'openBuzzers', target: T })
+    s = press(s, 'p2', 5)
+    expect(s.current?.status).toBe('opening')
+    expect(score(s, 'p2')).toBe(-50)
+  })
+
+  it('ignores presses while closed: they may have been sent while the buzzers were still open', () => {
+    let s = open(reduce(button(), { type: 'selectClue', ref: B200 }), 10)
+    s = reduce(s, { type: 'closeBuzzers' })
+    expect(press(s, 'p2', 11)).toBe(s)
+    s = run(open(s, 20), { type: 'buzz', playerId: 'p1', clueId: s.current!.id, attempt: 2, seq: 21, now: 0 }, { type: 'judge', correct: false })
+    expect(s.current?.status).toBe('closed')
+    expect(press(s, 'p2', 22)).toBe(s)
+  })
+
+  it('logs false starts game-wide and clears them for a new game', () => {
+    let s = press(reduce(button(), { type: 'selectClue', ref: B100 }), 'p1', 1)
+    s = run(s, { type: 'revealAnswer' }, { type: 'returnToBoard' }, { type: 'selectClue', ref: B200 })
+    expect(s.falseStarts).toHaveLength(1)
+    expect(toPublicState(s, 0).current?.falseStarts).toEqual([])
+    expect(reduce(s, { type: 'resetToLobby' }).falseStarts).toEqual([])
+  })
+
+  it('only blocks when the penalty is off, and in the practice buzz', () => {
+    let s = press(reduce(button({ falseStartPenalty: 0 }), { type: 'selectClue', ref: B100 }), 'p1', 1, 0)
+    expect(score(s, 'p1')).toBe(0)
+    expect(s.falseStarts).toMatchObject([{ playerId: 'p1', points: 0 }])
+    expect(s.current?.lockedUntil.p1).toBe(1000)
+
+    s = started({ intro: true, settings: { buzzStyle: 'button' } })
+    s = reduce(s, { type: 'buzz', playerId: 'p1', clueId: PRACTICE_ID, attempt: 0, seq: 1, now: 0 })
+    expect(s.practice?.lockedUntil.p1).toBe(1000)
+    expect(score(s, 'p1')).toBe(0)
+  })
+
+  it('ignores presses during a Daily Double or while someone answers', () => {
+    const dd = reduce(button(), { type: 'selectClue', ref: { round: 0, category: 0, clue: 1 } })
+    expect(press(dd, 'p2', 1)).toBe(dd)
+    const answering = press(open(reduce(button(), { type: 'selectClue', ref: B100 }), 10), 'p2', 11)
+    expect(press(answering, 'p3', 12)).toBe(answering)
+  })
+
+  it('leaves the emoji pad as it was: early taps never reach the score', () => {
+    const s = reduce(started(), { type: 'selectClue', ref: B100 })
+    expect(reduce(s, { type: 'buzz', playerId: 'p1', clueId: s.current!.id, attempt: 0, seq: 1, emoji: T, now: 0 })).toBe(s)
+  })
+})
+
+describe('quick draw', () => {
+  const quick = (buzzStyle: GameSettings['buzzStyle'] = 'button') => started({ settings: { buzzStyle, openMode: 'instant' } })
+
+  it('opens buzzers with the clue, hides the clue while someone answers and reopens after a wrong answer', () => {
+    let s = reduce(quick(), { type: 'selectClue', ref: B100, target: T })
+    expect(s.current).toMatchObject({ status: 'opening', attempt: 1, target: T })
+    s = reduce(s, { type: 'buzzersOpened', clueId: s.current!.id, attempt: 1, seq: 1, now: 0 })
+    expect(toPublicState(s, 0).current?.text).toBe('b1')
+
+    s = press(s, 'p2', 2)
+    expect(toPublicState(s, 0).current).toMatchObject({ status: 'answering', text: null, media: null })
+
+    s = reduce(s, { type: 'judge', correct: false, target: 1 })
+    expect(s.current).toMatchObject({ status: 'opening', attempt: 2, target: 1, lockedOut: ['p2'] })
+    expect(toPublicState(s, 0).current?.text).toBe('b1')
+  })
+
+  it('shows the clue again once revealed', () => {
+    let s = reduce(quick(), { type: 'selectClue', ref: B100, target: T })
+    s = reduce(s, { type: 'buzzersOpened', clueId: s.current!.id, attempt: 1, seq: 1, now: 0 })
+    s = run(press(s, 'p2', 2), { type: 'judge', correct: true })
+    expect(toPublicState(s, 0).current).toMatchObject({ status: 'revealed', text: 'b1', answer: 'B1' })
+  })
+
+  it('has no false starts', () => {
+    const s = reduce(quick(), { type: 'selectClue', ref: B100, target: T })
+    expect(press(s, 'p1', 1)).toBe(s)
+  })
+
+  it('works with the emoji pad, which still shows its emoji', () => {
+    const s = reduce(quick('emoji'), { type: 'selectClue', ref: B100, target: T })
+    expect(toPublicState(s, 0).current?.target).toBe(T)
+  })
+
+  it('plays Daily Doubles as usual, clue in sight', () => {
+    let s = reduce(quick(), { type: 'selectClue', ref: { round: 0, category: 0, clue: 1 }, target: T })
+    expect(s.current?.status).toBe('dd_wager')
+    s = run(s, { type: 'setDdWager', id: 'p1', amount: 100 }, { type: 'showDdClue' })
+    expect(toPublicState(s, 0).current?.text).toBe('a2')
   })
 })
