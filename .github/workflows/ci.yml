@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Only for the coverage comment on pull requests.
+  pull-requests: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm type-check
+      - name: Tests with coverage
+        run: pnpm test:coverage
+      - name: Build
+        run: pnpm build
+      - name: Build stories
+        run: pnpm story:build
+      - name: Board schema is up to date
+        run: |
+          pnpm schema
+          git diff --exit-code boards/board.schema.json || {
+            echo "::error file=boards/board.schema.json::Out of date with src/content/schema.ts. Run 'pnpm schema' and commit the result."
+            exit 1
+          }
+
+      # Report only: coverage never fails the build. Comments on pull requests, run summary on every run.
+      - name: Coverage report
+        if: always() && hashFiles('coverage/coverage-summary.json') != ''
+        uses: davelosert/vitest-coverage-report-action@v2

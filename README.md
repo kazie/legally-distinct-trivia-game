@@ -172,9 +172,14 @@ TypeScript 7 yet (`ERR_PACKAGE_PATH_NOT_EXPORTED: './lib/tsc'`). Bump it once Vu
 ```bash
 pnpm test          # engine, schema, host↔player integration, and story smoke tests (happy-dom)
 LDTG_BRIDGE_URL=ws://localhost:8080/ws pnpm test   # also runs a buzz race against a real bridge
+pnpm test:coverage # same, plus a coverage report (HTML in coverage/index.html)
 pnpm type-check
 pnpm build
 ```
+
+**CI** (`.github/workflows/ci.yml`) runs on every pull request and push to `master`: type check, tests with
+coverage, app build, stories build, and a check that `boards/board.schema.json` matches the Zod schema. Coverage
+is report only: a comment on the PR (updated on each push) and the run summary, never a failure.
 
 ```
 src/
