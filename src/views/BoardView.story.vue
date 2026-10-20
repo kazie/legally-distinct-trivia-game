@@ -18,5 +18,5 @@ import { ANN, BOB, CID, DEMO_ROOM, scenarioNames } from '@/dev/scenarios'
 # Board screen
 
 The real `BoardView` for the shared TV or projector. A host without a UI runs each scenario, and
-Ann, Bob and Cid are bots, so *Clue: buzzers open* plays out by itself.
+Ann, Bob and Cid are bots, so the *buzzers open* scenarios play out by themselves.
 </docs>

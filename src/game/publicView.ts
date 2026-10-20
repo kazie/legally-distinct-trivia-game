@@ -1,4 +1,4 @@
-import { clueId, ddMaxWager } from './engine'
+import { clueId, ddMaxWager, falseStartsOn } from './engine'
 import type { BuzzWindow, GameState, PublicCurrentClue, PublicFinal, PublicPractice, PublicState } from './types'
 
 /** A player counts as connected if the host heard from them this recently. */
@@ -39,13 +39,14 @@ export function toPublicState(state: GameState, now: number): PublicState {
     current: publicCurrent(state),
     final: publicFinal(state),
     practice: publicPractice(state),
-    emojiOnPhones: state.emojiOnPhones,
+    settings: state.settings,
     hostTime: now,
   }
 }
 
-/** Players only learn which emoji to tap once buzzers are opening, so nobody can tap early. */
-function visibleTarget(w: BuzzWindow): number | null {
+/** Players only learn which emoji to tap once buzzers are opening, so nobody can tap early. No emoji for the big button. */
+function visibleTarget(state: GameState, w: BuzzWindow): number | null {
+  if (state.settings.buzzStyle !== 'emoji') return null
   return w.status === 'opening' || w.status === 'open' ? w.target : null
 }
 
@@ -55,7 +56,9 @@ function publicCurrent(state: GameState): PublicCurrentClue | null {
   const category = state.board.rounds[cur.ref.round]?.categories[cur.ref.category]
   const clue = category?.clues[cur.ref.clue]
   if (!category || !clue) return null
-  const hidden = cur.status === 'dd_wager'
+  // Quick draw: whoever buzzed answers from memory.
+  const quickDrawHidden = state.settings.openMode === 'instant' && cur.status === 'answering' && !cur.dailyDouble
+  const hidden = cur.status === 'dd_wager' || quickDrawHidden
   return {
     id: cur.id,
     category: category.name,
@@ -63,7 +66,7 @@ function publicCurrent(state: GameState): PublicCurrentClue | null {
     dailyDouble: cur.dailyDouble,
     value: cur.value,
     attempt: cur.attempt,
-    target: visibleTarget(cur),
+    target: visibleTarget(state, cur),
     text: hidden ? null : clue.clue,
     media: hidden ? null : (clue.media ?? null),
     answer: cur.status === 'revealed' ? clue.answer : null,
@@ -72,6 +75,8 @@ function publicCurrent(state: GameState): PublicCurrentClue | null {
     correctPlayer: cur.correctPlayer,
     ddPlayer: cur.ddPlayer,
     ddMaxWager: cur.dailyDouble ? ddMaxWager(state, cur.ddPlayer) : null,
+    lockedUntil: cur.lockedUntil,
+    falseStarts: falseStartsOn(state, cur.id),
   }
 }
 
@@ -81,8 +86,9 @@ function publicPractice(state: GameState): PublicPractice | null {
   return {
     attempt: p.attempt,
     status: p.status,
-    target: visibleTarget(p),
+    target: visibleTarget(state, p),
     hits: p.hits,
+    lockedUntil: p.lockedUntil,
   }
 }
 

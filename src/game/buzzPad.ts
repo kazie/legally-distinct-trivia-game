@@ -1,9 +1,6 @@
 /** The buzz pad every phone shows: same emojis, same order, for everyone. */
 export const BUZZ_EMOJIS = ['🫠', '🧟', '😹', '🤔', '👀', '👻', '😎', '😭', '🦝'] as const
 
-/** How long a player is blocked after tapping the wrong emoji (or tapping before buzzers open). */
-export const STUN_MS = 200
-
 /** A reaction time for display, e.g. `0.41 s`. */
 export function formatSeconds(ms: number): string {
   return `${(ms / 1000).toFixed(2)} s`

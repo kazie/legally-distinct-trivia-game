@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import BuzzButton from '@/components/BuzzButton.vue'
 import BuzzPad, { type BuzzPadMode } from '@/components/BuzzPad.vue'
 import ConnectionBadge from '@/components/ConnectionBadge.vue'
 import Scoreboard from '@/components/Scoreboard.vue'
 import { safeMedia } from '@/content/schema'
 import { formatSeconds } from '@/game/buzzPad'
 import { ClientController } from '@/game/clientController'
+import { falseStartPoints, formatLockout } from '@/game/settings'
 import { useBridge } from '@/net/useBridge'
 import { LAST_NAME_KEY, useStorages } from '@/storage'
 
@@ -13,8 +15,21 @@ const props = defineProps<{ room: string }>()
 
 const { local, session } = useStorages()
 const client = new ClientController({ bridge: useBridge(), roomCode: props.room, role: 'player', storage: session })
-const { state, me, connection, hostOnline, joinedName, canBuzz, hasBuzzed, stunned, buzzWinnerName, practiceHit, phoneTarget } =
-  client
+const {
+  state,
+  me,
+  connection,
+  hostOnline,
+  joinedName,
+  canBuzz,
+  hasBuzzed,
+  stunned,
+  lockMs,
+  settings,
+  buzzWinnerName,
+  practiceHit,
+  phoneTarget,
+} = client
 
 const nameInput = ref(joinedName.value ?? local?.getItem(LAST_NAME_KEY) ?? '')
 const wagerInput = ref<number | null>(null)
@@ -30,7 +45,13 @@ const controlName = computed(() => client.nameOf(state.value?.control ?? null))
 const eligibleForFinal = computed(() => final.value?.eligible.includes(client.playerId) ?? false)
 const finalRemaining = computed(() => client.remainingMs(final.value?.answerEndsAt ?? null))
 const ranking = computed(() => [...(state.value?.players ?? [])].sort((a, b) => b.score - a.score))
-const emojiOnPhones = computed(() => state.value?.emojiOnPhones ?? false)
+const emojiOnPhones = computed(() => settings.value.emojiOnPhones)
+const bigButton = computed(() => settings.value.buzzStyle === 'button')
+const quickDraw = computed(() => settings.value.openMode === 'instant')
+/** In quick draw the clue disappears while someone answers. */
+const clueHidden = computed(() => cur.value?.status === 'answering' && !cur.value.dailyDouble && cur.value.text === null)
+/** Points a false start on this clue costs, for the waiting hint. */
+const falseStartCost = computed(() => (cur.value && phase.value === 'clue' ? falseStartPoints(settings.value, cur.value.value) : 0))
 /** Audio plays on every phone too: sound shared over a video call is often missing or poor. Pictures stay on the TV. */
 const audioSrc = computed(() => {
   const media = safeMedia(cur.value?.media)
@@ -44,16 +65,43 @@ function join() {
   client.join(nameInput.value)
 }
 
+/** Blocked after a false start or a wrong emoji: by this phone's own timer, or by the host. */
+const locked = computed(() => stunned.value || lockMs.value > 0)
+/** Why: set when this phone got blocked; empty when only the host knows (e.g. after a reload). */
 const stunReason = ref('')
+watch(locked, (now) => {
+  if (!now) stunReason.value = ''
+})
 
-function press(emoji: number) {
+/** This player's false starts on the clue, as the host booked them. */
+const myFalseStarts = computed(() => cur.value?.falseStarts.filter((f) => isMe(f.playerId)) ?? [])
+/** How many of them there were before the latest press, so only a penalty for that press is shown. */
+const falseStartsBefore = ref(0)
+/** What the host charged for the latest false start; nothing until it says so. */
+const charged = computed(() => (myFalseStarts.value.length > falseStartsBefore.value ? myFalseStarts.value.at(-1)!.points : 0))
+
+function press(emoji?: number) {
   const early = !client.buzzersOpen.value
+  const before = myFalseStarts.value.length
   const result = client.press(emoji)
   if (result === 'buzzed') navigator.vibrate?.(30)
   if (result === 'stunned') {
     stunReason.value = early ? 'Too early!' : 'Wrong emoji!'
+    falseStartsBefore.value = before
     navigator.vibrate?.(60)
   }
+}
+
+/** Time left, in steps short lockouts can show too: `2 s`, `0.4 s`. */
+const lockLeft = computed(() => {
+  const ms = lockMs.value
+  return ms >= 1000 ? `${Math.ceil(ms / 1000)} s` : `${Math.max(1, Math.ceil(ms / 100)) / 10} s`
+})
+
+function waitingHint(): string {
+  if (!bigButton.value) return emojiOnPhones.value ? 'Tap the emoji shown above' : 'Tap the emoji shown on the TV'
+  if (phase.value === 'intro' || quickDraw.value) return 'Press when it lights up'
+  return falseStartCost.value > 0 ? `Too early costs ${falseStartCost.value}` : 'Too early blocks you for a moment'
 }
 
 const pad = computed((): { mode: BuzzPadMode; label: string | null; sublabel: string | null } => {
@@ -69,10 +117,13 @@ const pad = computed((): { mode: BuzzPadMode; label: string | null; sublabel: st
     }
     if (c.lockedOut.includes(client.playerId)) return { mode: 'locked', label: 'Locked out', sublabel: null }
   }
-  if (stunned.value) return { mode: 'stunned', label: stunReason.value, sublabel: null }
+  if (locked.value) {
+    const cost = charged.value > 0 ? `−${charged.value} · ` : ''
+    return { mode: 'stunned', label: stunReason.value || 'Too early!', sublabel: `${cost}wait ${lockLeft.value}` }
+  }
   if (hasBuzzed.value) return { mode: 'buzzed', label: 'Buzzed…', sublabel: null }
-  if (canBuzz.value) return { mode: 'ready', label: null, sublabel: null }
-  return { mode: 'waiting', label: 'Get ready…', sublabel: emojiOnPhones.value ? 'Tap the emoji shown above' : 'Tap the emoji shown on the TV' }
+  if (canBuzz.value) return { mode: 'ready', label: bigButton.value ? 'BUZZ!' : null, sublabel: null }
+  return { mode: 'waiting', label: bigButton.value ? 'Wait for it…' : 'Get ready…', sublabel: waitingHint() }
 })
 
 function sendWager(kind: 'daily' | 'final') {
@@ -100,11 +151,17 @@ watch(
   },
 )
 
-/** Keys 1–9 tap the pad row by row (handy when testing on a laptop). */
+/** Keys 1–9 tap the pad row by row, Space presses the big button (handy when testing on a laptop). */
 function onKey(event: KeyboardEvent) {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
+  if (event.repeat || cur.value?.dailyDouble || (phase.value !== 'clue' && phase.value !== 'intro')) return
+  if (bigButton.value) {
+    if (event.code !== 'Space' && !/^(Digit|Numpad)[1-9]$/.test(event.code)) return
+    event.preventDefault()
+    return press()
+  }
   const digit = /^Digit([1-9])$|^Numpad([1-9])$/.exec(event.code)
-  if (!digit || cur.value?.dailyDouble || (phase.value !== 'clue' && phase.value !== 'intro')) return
+  if (!digit) return
   event.preventDefault()
   press(Number(digit[1] ?? digit[2]) - 1)
 }
@@ -159,12 +216,16 @@ onUnmounted(() => {
       <template v-else-if="phase === 'intro'">
         <div class="panel center">
           <h2>Practice round</h2>
-          <p class="muted">
+          <p v-if="bigButton" class="muted">
+            Press the button as soon as it lights up. Too early blocks you for {{ formatLockout(settings.lockoutMs) }}.
+          </p>
+          <p v-else class="muted">
             When an emoji shows up {{ emojiOnPhones ? 'above the pad' : 'on the TV' }}, tap the same one here. Wrong or too early
-            blocks you for a moment.
+            blocks you for {{ formatLockout(settings.lockoutMs) }}.
           </p>
         </div>
-        <BuzzPad :mode="pad.mode" :label="pad.label" :sublabel="pad.sublabel" :target="padTarget" @press="press" />
+        <BuzzButton v-if="bigButton" :mode="pad.mode" :label="pad.label" :sublabel="pad.sublabel" @press="press()" />
+        <BuzzPad v-else :mode="pad.mode" :label="pad.label" :sublabel="pad.sublabel" :target="padTarget" @press="press" />
       </template>
 
       <div v-else-if="phase === 'board'" class="panel center">
@@ -179,6 +240,7 @@ onUnmounted(() => {
           <div class="muted">{{ cur.category }}</div>
           <div class="value clue-value">{{ cur.dailyDouble ? 'DAILY DOUBLE' : cur.value }}</div>
           <p v-if="cur.text" class="clue-text serif">{{ cur.text }}</p>
+          <p v-else-if="clueHidden" class="muted">🙈 Clue hidden — answer from memory!</p>
           <audio v-if="audioSrc" :key="cur.id" :src="audioSrc" controls preload="none" class="clue-audio" />
         </div>
 
@@ -201,6 +263,13 @@ onUnmounted(() => {
         </div>
 
         <!-- Stays mounted (and the same size) for the whole clue, so nothing jumps between states. -->
+        <BuzzButton
+          v-else-if="!cur.dailyDouble && bigButton"
+          :mode="pad.mode"
+          :label="pad.label"
+          :sublabel="pad.sublabel"
+          @press="press()"
+        />
         <BuzzPad
           v-else-if="!cur.dailyDouble"
           :mode="pad.mode"

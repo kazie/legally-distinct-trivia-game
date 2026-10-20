@@ -8,9 +8,10 @@ import { allBoards, type BoardEntry } from '@/content/boards'
 import { ddMaxWager, pickDailyDoubles, type Action } from '@/game/engine'
 import { HostController } from '@/game/hostController'
 import { toPublicState } from '@/game/publicView'
+import { formatLockout, LOCKOUT_CHOICES, normalizeSettings, PENALTY_CHOICES, type GameSettings } from '@/game/settings'
 import { useBridge } from '@/net/useBridge'
 import type { ConnectionStatus } from '@/net/bridgeClient'
-import { EMOJI_ON_PHONES_KEY, LAST_HOST_ROOM_KEY, SHOW_INTRO_KEY, useStorages } from '@/storage'
+import { EMOJI_ON_PHONES_KEY, LAST_HOST_ROOM_KEY, SETTINGS_KEY, SHOW_INTRO_KEY, useStorages } from '@/storage'
 
 const props = defineProps<{ room: string }>()
 
@@ -28,7 +29,23 @@ const finalSeconds = ref(30)
 const wagerInput = ref<number | null>(null)
 const adjust = ref<Record<string, number | null>>({})
 const showIntro = ref(local?.getItem(SHOW_INTRO_KEY) !== 'false')
-const emojiOnPhones = ref(local?.getItem(EMOJI_ON_PHONES_KEY) === 'true')
+const settings = ref<GameSettings>(loadSettings())
+
+/** The host's last choices, or the defaults (keeping the old emoji-on-phones checkbox if that's all there is). */
+function loadSettings(): GameSettings {
+  try {
+    const saved = local?.getItem(SETTINGS_KEY)
+    if (saved) return normalizeSettings(JSON.parse(saved))
+  } catch {
+    // Broken value: start from the defaults.
+  }
+  return normalizeSettings({ emojiOnPhones: local?.getItem(EMOJI_ON_PHONES_KEY) === 'true' })
+}
+
+/** Whether a false start costs anything: only the big button with the host opening buzzers has false starts. */
+const falseStartsApply = computed(() => settings.value.buzzStyle === 'button' && settings.value.openMode === 'host')
+/** A buzz target for the next opening; the host picks it even for the big button, it just isn't shown then. */
+const nextTarget = () => pickBuzzTarget(cur.value?.target ?? null)
 
 const joinUrl = `${location.origin}/play/${props.room}`
 const boardUrl = `${location.origin}/board/${props.room}`
@@ -64,8 +81,8 @@ function loadSelectedBoard() {
 
 function startGame() {
   local?.setItem(SHOW_INTRO_KEY, String(showIntro.value))
-  local?.setItem(EMOJI_ON_PHONES_KEY, String(emojiOnPhones.value))
-  act({ type: 'startGame', intro: showIntro.value, emojiOnPhones: emojiOnPhones.value })
+  local?.setItem(SETTINGS_KEY, JSON.stringify(settings.value))
+  act({ type: 'startGame', intro: showIntro.value, settings: settings.value })
 }
 
 function openPractice() {
@@ -73,7 +90,7 @@ function openPractice() {
 }
 
 function selectClue(category: number, clueIndex: number) {
-  act({ type: 'selectClue', ref: { round: game.value.round, category, clue: clueIndex } })
+  act({ type: 'selectClue', ref: { round: game.value.round, category, clue: clueIndex }, target: pickBuzzTarget(null) })
   wagerInput.value = null
 }
 
@@ -118,9 +135,9 @@ function onKey(event: KeyboardEvent) {
     return event.preventDefault()
   }
   if (!c) return
-  if ((key === ' ' || key === 'b') && (c.status === 'reading' || c.status === 'closed')) act({ type: 'openBuzzers', target: pickBuzzTarget(c.target) })
+  if ((key === ' ' || key === 'b') && (c.status === 'reading' || c.status === 'closed')) act({ type: 'openBuzzers', target: nextTarget() })
   else if (key === 'c' && c.status === 'answering') act({ type: 'judge', correct: true })
-  else if (key === 'x' && c.status === 'answering') act({ type: 'judge', correct: false })
+  else if (key === 'x' && c.status === 'answering') act({ type: 'judge', correct: false, target: nextTarget() })
   else if (key === 'r' && c.status !== 'revealed') act({ type: 'revealAnswer' })
   else if (key === 'enter' && c.status === 'revealed') act({ type: 'returnToBoard' })
   else return
@@ -188,10 +205,54 @@ onUnmounted(() => {
               <input v-model="showIntro" type="checkbox" />
               Show introduction &amp; practice buzz first
             </label>
-            <label class="check">
-              <input v-model="emojiOnPhones" type="checkbox" />
-              Show the buzz emoji on phones too (fair for players watching a video call)
-            </label>
+            <fieldset class="settings stack">
+              <legend>Buzzers</legend>
+              <div class="choices">
+                <label class="check">
+                  <input v-model="settings.buzzStyle" type="radio" value="button" />
+                  Big button
+                </label>
+                <label class="check">
+                  <input v-model="settings.buzzStyle" type="radio" value="emoji" />
+                  Emoji pad: tap the emoji shown on the TV
+                </label>
+              </div>
+              <label v-if="settings.buzzStyle === 'emoji'" class="check indent">
+                <input v-model="settings.emojiOnPhones" type="checkbox" />
+                Show the buzz emoji on phones too (fair for players watching a video call)
+              </label>
+              <div class="choices">
+                <label class="check">
+                  <input v-model="settings.openMode" type="radio" value="host" />
+                  You open the buzzers after reading the clue
+                </label>
+                <label class="check">
+                  <input v-model="settings.openMode" type="radio" value="instant" />
+                  Quick draw: buzzers open with the clue, and the clue hides when someone buzzes
+                </label>
+              </div>
+              <div class="row">
+                <label class="inline">
+                  Pressing too early costs
+                  <select v-model.number="settings.falseStartPenalty" :disabled="!falseStartsApply">
+                    <option v-for="p in PENALTY_CHOICES" :key="p" :value="p">
+                      {{ p === 0 ? 'no points' : `${p * 100}% of the clue` }}
+                    </option>
+                  </select>
+                </label>
+                <label class="inline">
+                  and blocks for
+                  <select v-model.number="settings.lockoutMs">
+                    <option v-for="ms in LOCKOUT_CHOICES" :key="ms" :value="ms">{{ formatLockout(ms) }}</option>
+                  </select>
+                </label>
+              </div>
+              <p class="muted hint">
+                <template v-if="settings.buzzStyle === 'emoji'">A wrong emoji or a tap before the buzzers open only blocks.</template>
+                <template v-else-if="!falseStartsApply">In quick draw there's no "too early", except in the practice buzz.</template>
+                <template v-else>Pressing before you open the buzzers is a false start.</template>
+              </p>
+            </fieldset>
             <button class="primary" :disabled="!board" @click="startGame">
               Start game with {{ game.players.length }} player(s)
             </button>
@@ -204,19 +265,24 @@ onUnmounted(() => {
       <div v-else-if="game.phase === 'intro' && practice" class="panel stack">
         <h2>Introduction</h2>
         <p class="muted">
-          The board screen explains the rules. Run a practice buzz or two so everyone learns to tap the emoji
-          shown on the TV. No points are scored.
+          The board screen explains the rules. Run a practice buzz or two so everyone learns to
+          {{ game.settings.buzzStyle === 'emoji' ? 'tap the emoji shown on the TV' : 'press the button when it lights up' }}.
+          No points are scored or lost.
         </p>
         <div class="row">
           <button class="primary big" @click="openPractice">
             {{ practice.target === null ? 'Practice buzz' : 'Practice again' }} <kbd>Space</kbd>
           </button>
           <span v-if="practice.status === 'opening'" class="waiting">Opening…</span>
-          <span v-if="practice.target !== null && practice.status !== 'reading'" class="target" title="Emoji players must tap">
+          <span
+            v-if="game.settings.buzzStyle === 'emoji' && practice.target !== null && practice.status !== 'reading'"
+            class="target"
+            title="Emoji players must tap"
+          >
             {{ BUZZ_EMOJIS[practice.target] }}
           </span>
           <span v-if="practice.target !== null" class="muted">
-            {{ practice.hits.length }} / {{ game.players.length }} tapped it
+            {{ practice.hits.length }} / {{ game.players.length }} buzzed
           </span>
           <span class="spacer" />
           <button class="primary" @click="act({ type: 'endIntro' })">Start {{ board?.rounds[0]?.name ?? 'game' }}</button>
@@ -281,7 +347,7 @@ onUnmounted(() => {
         </div>
 
         <div v-else-if="cur.status === 'reading' || cur.status === 'closed'" class="row">
-          <button class="primary big" @click="act({ type: 'openBuzzers', target: pickBuzzTarget(cur.target) })">
+          <button class="primary big" @click="act({ type: 'openBuzzers', target: nextTarget() })">
             {{ cur.status === 'reading' ? 'Open buzzers' : 'Reopen buzzers' }} <kbd>Space</kbd>
           </button>
           <button @click="act({ type: 'revealAnswer' })">Nobody – reveal <kbd>R</kbd></button>
@@ -289,8 +355,12 @@ onUnmounted(() => {
         </div>
 
         <div v-else-if="cur.status === 'opening' || cur.status === 'open'" class="row">
-          <span class="waiting">{{ cur.status === 'opening' ? 'Opening…' : 'Buzzers open – waiting for a buzz…' }}</span>
-          <span v-if="cur.target !== null" class="target" title="Emoji players must tap">{{ BUZZ_EMOJIS[cur.target] }}</span>
+          <span class="waiting">
+            {{ cur.status === 'opening' ? 'Opening…' : game.settings.openMode === 'instant' ? 'Quick draw – buzzers open…' : 'Buzzers open – waiting for a buzz…' }}
+          </span>
+          <span v-if="game.settings.buzzStyle === 'emoji' && cur.target !== null" class="target" title="Emoji players must tap">
+            {{ BUZZ_EMOJIS[cur.target] }}
+          </span>
           <span class="spacer" />
           <button @click="act({ type: 'closeBuzzers' })">Close buzzers</button>
           <button @click="act({ type: 'revealAnswer' })">Time's up – reveal <kbd>R</kbd></button>
@@ -300,7 +370,9 @@ onUnmounted(() => {
           <div class="winner">{{ nameOf(cur.buzzWinner) }} <small>is answering</small></div>
           <div class="row">
             <button class="ok big" @click="act({ type: 'judge', correct: true })">Correct +{{ cur.value }} <kbd>C</kbd></button>
-            <button class="bad big" @click="act({ type: 'judge', correct: false })">Incorrect −{{ cur.value }} <kbd>X</kbd></button>
+            <button class="bad big" @click="act({ type: 'judge', correct: false, target: nextTarget() })">
+              Incorrect −{{ cur.value }} <kbd>X</kbd>
+            </button>
           </div>
         </div>
 
@@ -310,6 +382,11 @@ onUnmounted(() => {
           <span class="spacer" />
           <button class="primary big" @click="act({ type: 'returnToBoard' })">Back to board <kbd>Enter</kbd></button>
         </div>
+
+        <p v-if="pub.current?.falseStarts.length" class="muted">
+          Too early:
+          {{ pub.current.falseStarts.map((f) => (f.points ? `${nameOf(f.playerId)} −${f.points}` : nameOf(f.playerId))).join(', ') }}
+        </p>
       </div>
 
       <!-- Final -->
@@ -504,6 +581,27 @@ kbd {
 }
 .narrow {
   width: 6.5em;
+}
+.settings {
+  border: 1px solid var(--panel-2);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  margin: 0;
+}
+.settings legend {
+  padding: 0 0.3em;
+  font-weight: 700;
+}
+.choices {
+  display: grid;
+  gap: 0.2rem;
+}
+.indent {
+  margin-left: 1.6em;
+}
+.settings .hint {
+  margin: 0;
+  font-size: 0.9em;
 }
 .inline {
   display: flex;

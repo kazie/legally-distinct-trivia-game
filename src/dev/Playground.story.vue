@@ -30,8 +30,9 @@ const state = reactive({ scenario: 'Lobby' as ScenarioName, cidIsBot: true })
 # Live game playground
 
 A whole game in one page: host panel, TV board, and phones for Ann and Bob, all talking over an in-memory
-bridge. Cid is a bot. Pick a starting point under *Controls*, then play: open buzzers on the host, tap the emoji
-the TV shows on a phone (a wrong one stuns for 200 ms), and judge.
+bridge. Cid is a bot. Pick a starting point under *Controls*, then play: open buzzers on the host, press the big
+button on a phone (too early costs points and blocks for a moment), and judge. The *emoji pad* and *quick draw*
+scenarios play the other buzzer options; *Lobby* lets you pick them yourself.
 </docs>
 
 <style scoped>

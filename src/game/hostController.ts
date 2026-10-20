@@ -4,6 +4,7 @@ import { decode, encode, type Message, type OutgoingMessage } from '@/net/protoc
 import { buzzWindowId, createGame, reduce, type Action } from './engine'
 import { toPublicState } from './publicView'
 import { roomTopic } from './roomCode'
+import { LOCKOUT_CHOICES, normalizeSettings } from './settings'
 import type { GameState } from './types'
 
 export const HEARTBEAT_MS = 3000
@@ -31,6 +32,27 @@ function settleBuzzers(s: GameState): GameState {
   if (s.current?.status === 'opening' || s.current?.status === 'open') s.current.status = 'closed'
   if (s.practice) s.practice.status = 'reading'
   return s
+}
+
+/**
+ * Undo never refunds a false start: it came from a player, not from the host, and their phone already showed
+ * what it cost. Penalties (and lockouts on the same clue) taken since `previous` are carried over into it.
+ * Undoing all the way back to the lobby drops them, like the rest of that game.
+ */
+function keepFalseStarts(current: GameState, previous: GameState): GameState {
+  if (previous.phase === 'lobby') return previous
+  const known = new Set(previous.falseStarts.map((f) => f.seq))
+  for (const f of current.falseStarts) {
+    if (known.has(f.seq)) continue
+    previous.falseStarts.push(f)
+    const player = previous.players.find((p) => p.id === f.playerId)
+    if (player) player.score -= f.points
+  }
+  if (previous.current && previous.current.id === current.current?.id) {
+    Object.assign(previous.current.lockedUntil, current.current.lockedUntil)
+  }
+  if (previous.practice && current.practice) Object.assign(previous.practice.lockedUntil, current.practice.lockedUntil)
+  return previous
 }
 
 export function hostStorageKey(roomCode: string): string {
@@ -104,7 +126,7 @@ export class HostController {
     const popped = this.history.pop()
     this.canUndo.value = this.history.length > 0
     if (!popped) return
-    const previous = settleBuzzers(structuredClone(popped))
+    const previous = keepFalseStarts(this.state.value, settleBuzzers(structuredClone(popped)))
     // Players remember which attempts they buzzed in, so the next opening must not reuse a number.
     previous.buzzRound = this.state.value.buzzRound
     this.commit(previous)
@@ -206,12 +228,19 @@ export class HostController {
     try {
       const raw = this.storage?.getItem(hostStorageKey(roomCode))
       if (!raw) return null
-      const saved = JSON.parse(raw) as GameState
+      const saved = JSON.parse(raw) as GameState & { emojiOnPhones?: boolean }
       if (saved.roomCode !== roomCode) return null
-      // Games saved before the intro, the game-wide buzz counter and emoji on phones existed.
+      // Games saved before the intro, the game-wide buzz counter and game settings existed.
       saved.practice ??= null
       saved.buzzRound ??= saved.current?.attempt ?? 0
-      saved.emojiOnPhones ??= false
+      // Those games all used the emoji pad, with a 200 ms block: keep them as close to that as the choices allow.
+      saved.settings = normalizeSettings(
+        saved.settings ?? { buzzStyle: 'emoji', emojiOnPhones: saved.emojiOnPhones ?? false, lockoutMs: LOCKOUT_CHOICES[0] },
+      )
+      delete saved.emojiOnPhones
+      saved.falseStarts ??= []
+      if (saved.current) saved.current.lockedUntil ??= {}
+      if (saved.practice) saved.practice.lockedUntil ??= {}
       // Buzzes that raced a reload are gone.
       return settleBuzzers(saved)
     } catch {

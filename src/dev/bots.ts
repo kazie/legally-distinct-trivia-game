@@ -34,9 +34,16 @@ export function startBot(fake: FakeBridge, room: string, id: string, name: strin
   const later = (fn: () => void, ms = random(...reactionMs)) => setTimeout(fn, ms)
 
   const tapTarget = () => bot.press(bot.buzzable.value?.target ?? -1)
+  const bigButton = () => bot.settings.value.buzzStyle === 'button'
+  // Now and then, jump the gun on the big button while the host is still reading.
+  watch(
+    () => bot.buzzable.value?.status === 'reading' && bigButton(),
+    (reading) => reading && Math.random() < 0.1 && later(() => bot.press()),
+  )
   watch(bot.buzzersOpen, (open) => {
     if (!open || Math.random() >= buzzChance) return
     later(() => {
+      if (bigButton()) return bot.press()
       // Now and then, fumble: tap a wrong emoji, get stunned, then tap the right one.
       const target = bot.buzzable.value?.target ?? 0
       if (Math.random() < 0.15) {

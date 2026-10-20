@@ -9,5 +9,14 @@ export default defineConfig({
   },
   test: {
     include: ['tests/**/*.spec.ts'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,vue}'],
+      // Dev-only harness, stories and entry points: not app code worth measuring.
+      exclude: ['src/dev/**', '**/*.story.vue', 'src/histoire.setup.ts', 'src/env.d.ts', 'src/main.ts'],
+      // json-summary and json feed the PR coverage comment in CI.
+      reporter: ['text', 'html', 'json-summary', 'json'],
+      reportOnFailure: true,
+    },
   },
 })

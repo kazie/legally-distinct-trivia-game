@@ -7,6 +7,7 @@ import JoinQr from '@/components/JoinQr.vue'
 import Scoreboard from '@/components/Scoreboard.vue'
 import { BUZZ_EMOJIS, formatSeconds } from '@/game/buzzPad'
 import { ClientController } from '@/game/clientController'
+import { DEFAULT_SETTINGS, formatLockout } from '@/game/settings'
 import { useBridge } from '@/net/useBridge'
 import { beep } from '@/sound'
 
@@ -24,6 +25,11 @@ const finalRemaining = computed(() => client.remainingMs(final.value?.answerEnds
 const ranking = computed(() => [...(state.value?.players ?? [])].sort((a, b) => b.score - a.score))
 const highlight = computed(() => cur.value?.buzzWinner ?? final.value?.judging?.playerId ?? null)
 const practice = computed(() => state.value?.practice ?? null)
+const settings = computed(() => state.value?.settings ?? DEFAULT_SETTINGS)
+const emojiPad = computed(() => settings.value.buzzStyle === 'emoji')
+const quickDraw = computed(() => settings.value.openMode === 'instant')
+const lockout = computed(() => formatLockout(settings.value.lockoutMs))
+const penaltyShare = computed(() => (settings.value.falseStartPenalty ? `${settings.value.falseStartPenalty * 100}%` : null))
 const EXAMPLE_TARGET = 5
 
 const soundOn = ref(false)
@@ -78,17 +84,31 @@ onUnmounted(() => client.stop())
       <div class="rules">
         <h1 class="serif gold">How to play</h1>
         <ol>
-          <li>The host reads a clue out loud.</li>
-          <li>When the buzzers open, an emoji appears here on the TV.</li>
-          <li>
-            Find <strong>that</strong> emoji on your phone and tap it.
-            <span class="muted">A wrong emoji or tapping too early blocks you for a moment.</span>
+          <li v-if="quickDraw">A clue appears and the buzzers open right away.</li>
+          <li v-else>The host reads a clue out loud.</li>
+          <template v-if="emojiPad">
+            <li>When the buzzers open, an emoji appears here on the TV.</li>
+            <li>
+              Find <strong>that</strong> emoji on your phone and tap it.
+              <span class="muted">A wrong emoji or tapping too early blocks you for {{ lockout }}.</span>
+            </li>
+          </template>
+          <li v-else-if="quickDraw">Press the big button on your phone as soon as you know it.</li>
+          <li v-else>
+            When the screen lights up, press the big button on your phone.
+            <span class="muted">
+              Too early {{ penaltyShare ? `costs ${penaltyShare} of the clue's value and blocks` : 'blocks' }} you for {{ lockout }}.
+            </span>
+          </li>
+          <li v-if="quickDraw">
+            Careful: the clue <strong>disappears</strong> the moment someone buzzes.
+            <span class="muted">Buzz early and you answer from memory!</span>
           </li>
           <li>The fastest player answers out loud. Right wins the points, wrong loses them and locks you out.</li>
           <li>A <span class="gold">Daily Double</span> is for the player in control only, who wagers first.</li>
           <li v-if="state.hasFinal">The game ends with a final round: everyone with points wagers and writes an answer.</li>
         </ol>
-        <div class="example">
+        <div v-if="emojiPad" class="example">
           <div class="mini-pad">
             <span v-for="(emoji, i) in BUZZ_EMOJIS" :key="emoji" :class="{ hit: i === EXAMPLE_TARGET }">{{ emoji }}</span>
           </div>
@@ -101,7 +121,9 @@ onUnmounted(() => client.stop())
           <span :key="practice.attempt" class="target-emoji">{{ BUZZ_EMOJIS[practice.target] }}</span>
           <small class="gold">Tap it to buzz!</small>
         </div>
-        <p v-else class="sub">Get your phone ready — the host will show an emoji to tap.</p>
+        <div v-else-if="practice?.status === 'open' && !emojiPad" :key="practice.attempt" class="hint gold buzz-now">Buzz now!</div>
+        <p v-else-if="emojiPad" class="sub">Get your phone ready — the host will show an emoji to tap.</p>
+        <p v-else class="sub">Get your phone ready — press when this lights up.</p>
         <ol v-if="practice?.hits.length" class="hits">
           <li v-for="hit in practice.hits" :key="hit.playerId">
             {{ client.nameOf(hit.playerId) }} <span class="muted">{{ formatSeconds(hit.ms) }}</span>
@@ -126,7 +148,8 @@ onUnmounted(() => client.stop())
         <p class="sub">{{ client.nameOf(cur.ddPlayer) ?? 'Who' }} is wagering…</p>
       </template>
       <template v-else>
-        <ClueText class="clue-text" :text="cur.text ?? ''" :media="cur.media" />
+        <ClueText v-if="cur.text !== null" class="clue-text" :text="cur.text" :media="cur.media" />
+        <div v-else class="hidden-clue">🙈 Clue hidden — answer from memory!</div>
         <div v-if="cur.status === 'answering'" class="banner">
           {{ buzzWinnerName }}
           <small>{{ cur.dailyDouble ? `Daily Double for ${cur.value}` : 'buzzed in!' }}</small>
@@ -142,6 +165,10 @@ onUnmounted(() => client.stop())
         </div>
         <div v-if="cur.lockedOut.length && cur.status !== 'revealed'" class="muted locked">
           Wrong: {{ cur.lockedOut.map((id) => client.nameOf(id)).join(', ') }}
+        </div>
+        <div v-if="cur.falseStarts.length && cur.status !== 'revealed'" class="muted locked">
+          Too early:
+          {{ cur.falseStarts.map((f) => `${client.nameOf(f.playerId)}${f.points ? ` −${f.points}` : ''}`).join(', ') }}
         </div>
       </template>
     </section>
@@ -341,6 +368,16 @@ onUnmounted(() => client.stop())
 }
 .timer {
   font-size: 4em;
+}
+.hidden-clue {
+  font-size: 2.4em;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: center;
+}
+.buzz-now {
+  font-size: 4em;
+  animation: pop 0.25s ease-out;
 }
 .locked {
   font-size: 1.1em;

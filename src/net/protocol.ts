@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { PublicState } from '@/game/types'
 
-export const PROTOCOL_VERSION = 3
+export const PROTOCOL_VERSION = 4
 
 const id = z.string().min(1).max(64)
 const base = { v: z.literal(PROTOCOL_VERSION) }
@@ -21,7 +21,8 @@ export const MessageSchema = z.discriminatedUnion('type', [
     playerId: id,
     clueId: z.string(),
     attempt: z.number().int(),
-    emoji: z.number().int().min(0).max(8),
+    /** Left out by the big button. */
+    emoji: z.number().int().min(0).max(8).optional(),
   }),
   z.object({
     ...base,

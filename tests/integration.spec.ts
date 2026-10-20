@@ -3,8 +3,8 @@ import sample from '../boards/sample.json'
 import { validateBoard, type Board } from '@/content/schema'
 import { BridgeClient } from '@/net/bridgeClient'
 import { HostController, hostStorageKey } from '@/game/hostController'
-import { STUN_MS } from '@/game/buzzPad'
 import { ClientController } from '@/game/clientController'
+import { DEFAULT_SETTINGS } from '@/game/settings'
 import { FakeBridge, MemoryStorage, flush } from '@/dev/fakeBridge'
 
 const result = validateBoard(sample)
@@ -12,6 +12,9 @@ if (!result.ok) throw new Error('sample board invalid')
 const board: Board = result.board
 
 const stops: (() => void)[] = []
+/** The existing races are played on the emoji pad, with a short lockout to keep tests quick. */
+const EMOJI_LOCKOUT = 250
+const EMOJI = { buzzStyle: 'emoji', lockoutMs: EMOJI_LOCKOUT } as const
 afterEach(() => stops.splice(0).forEach((fn) => fn()))
 
 function setup(hostStorage = new MemoryStorage()) {
@@ -53,7 +56,7 @@ describe('host and players over the bridge', () => {
     expect(host.state.value.players.map((p) => p.name)).toEqual(['Ann', 'Bob', 'Cid'])
 
     host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
-    host.dispatch({ type: 'startGame' })
+    host.dispatch({ type: 'startGame', settings: EMOJI })
     host.dispatch({ type: 'selectClue', ref: { round: 0, category: 0, clue: 0 } })
     await flush()
     expect(bob.state.value?.current?.text).toBe('The planet known as the Red Planet')
@@ -99,7 +102,7 @@ describe('host and players over the bridge', () => {
     bob.join('Bob')
     await flush()
     host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
-    host.dispatch({ type: 'startGame', emojiOnPhones })
+    host.dispatch({ type: 'startGame', settings: { buzzStyle: 'emoji', emojiOnPhones } })
     host.dispatch({ type: 'selectClue', ref: { round: 0, category: 0, clue: 0 } })
     await flush()
     expect(ann.phoneTarget.value).toBeNull()
@@ -113,14 +116,26 @@ describe('host and players over the bridge', () => {
     expect(ann.phoneTarget.value).toBeNull()
   })
 
-  it('resumes games saved before emoji on phones existed', () => {
+  it.each([undefined, true])('resumes games saved before settings existed as emoji games (emoji on phones: %s)', (emojiOnPhones) => {
     const { host, hostStorage } = setup()
     host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
+    host.dispatch({ type: 'startGame' })
+    host.dispatch({ type: 'selectClue', ref: { round: 0, category: 0, clue: 0 } })
     const saved = JSON.parse(hostStorage.getItem(hostStorageKey('ROOM'))!)
-    delete saved.emojiOnPhones
+    delete saved.settings
+    delete saved.current.lockedUntil
+    delete saved.falseStarts
+    if (emojiOnPhones !== undefined) saved.emojiOnPhones = emojiOnPhones
     hostStorage.setItem(hostStorageKey('ROOM'), JSON.stringify(saved))
     const restored = new HostController({ bridge: host['bridge'], roomCode: 'ROOM', storage: hostStorage })
-    expect(restored.state.value.emojiOnPhones).toBe(false)
+    expect(restored.state.value.settings).toEqual({
+      ...DEFAULT_SETTINGS,
+      buzzStyle: 'emoji',
+      emojiOnPhones: !!emojiOnPhones,
+      lockoutMs: 250, // the old 200 ms block, as close as the choices go
+    })
+    expect(restored.state.value.current?.lockedUntil).toEqual({})
+    expect(restored.state.value.falseStarts).toEqual([])
   })
 
   it('stuns a player for a wrong emoji or an early tap, without sending a buzz', async () => {
@@ -131,7 +146,7 @@ describe('host and players over the bridge', () => {
     bob.join('Bob')
     await flush()
     host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
-    host.dispatch({ type: 'startGame' })
+    host.dispatch({ type: 'startGame', settings: EMOJI })
     host.dispatch({ type: 'selectClue', ref: { round: 0, category: 0, clue: 0 } })
     await flush()
 
@@ -139,7 +154,7 @@ describe('host and players over the bridge', () => {
     expect(ann.press(0)).toBe('stunned')
     expect(ann.stunned.value).toBe(true)
     expect(ann.press(0)).toBe('ignored')
-    await new Promise((r) => setTimeout(r, STUN_MS + 30))
+    await new Promise((r) => setTimeout(r, EMOJI_LOCKOUT + 30))
     expect(ann.stunned.value).toBe(false)
 
     host.dispatch({ type: 'openBuzzers', target: 6 })
@@ -153,6 +168,98 @@ describe('host and players over the bridge', () => {
     expect(host.state.value.current?.buzzWinner).toBe(bob.playerId)
   })
 
+  it('charges a big-button false start on the host and blocks the phone', async () => {
+    const { host, player } = setup()
+    const [ann, bob] = [player(1), player(2)]
+    await flush()
+    ann.join('Ann')
+    bob.join('Bob')
+    await flush()
+    host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
+    host.dispatch({ type: 'startGame', settings: { lockoutMs: 250 } })
+    host.dispatch({ type: 'selectClue', ref: { round: 0, category: 0, clue: 0 } })
+    await flush()
+
+    expect(ann.press()).toBe('stunned')
+    expect(ann.lockMs.value).toBeGreaterThan(0)
+    expect(ann.press()).toBe('ignored')
+    await flush()
+    expect(host.state.value.players.map((p) => p.score)).toEqual([-100, 0])
+    expect(bob.state.value?.current?.falseStarts).toEqual([{ playerId: ann.playerId, points: 100 }])
+
+    host.dispatch({ type: 'openBuzzers', target: 0 })
+    await flush()
+    expect(ann.canBuzz.value).toBe(false)
+    expect(bob.canBuzz.value).toBe(true)
+    expect(bob.press()).toBe('buzzed')
+    await flush()
+    expect(host.state.value.current?.buzzWinner).toBe(bob.playerId)
+
+    // Once the lockout is over, Ann gets her chance after Bob's miss.
+    await new Promise((r) => setTimeout(r, 300))
+    host.dispatch({ type: 'judge', correct: false })
+    host.dispatch({ type: 'openBuzzers', target: 0 })
+    await flush()
+    expect(ann.lockMs.value).toBe(0)
+    expect(ann.press()).toBe('buzzed')
+    await flush()
+    expect(host.state.value.current?.buzzWinner).toBe(ann.playerId)
+  })
+
+  it('keeps false-start penalties through the host\'s undo', async () => {
+    const { host, player } = setup()
+    const [ann, bob] = [player(1), player(2)]
+    await flush()
+    ann.join('Ann')
+    bob.join('Bob')
+    await flush()
+    host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
+    host.dispatch({ type: 'startGame' })
+    host.dispatch({ type: 'selectClue', ref: { round: 0, category: 0, clue: 0 } })
+    host.dispatch({ type: 'adjustScore', id: bob.playerId, delta: 500 })
+    await flush()
+    expect(ann.press()).toBe('stunned')
+    await flush()
+    expect(host.state.value.players.map((p) => p.score)).toEqual([-100, 500])
+
+    // Undo the score fix: Bob's +500 goes, Ann's penalty stays, and so does her lockout.
+    host.undo()
+    await flush()
+    expect(host.state.value.players.map((p) => p.score)).toEqual([-100, 0])
+    expect(bob.state.value?.current?.falseStarts).toEqual([{ playerId: ann.playerId, points: 100 }])
+    expect(host.state.value.current?.lockedUntil[ann.playerId]).toBeGreaterThan(0)
+
+    // Undo back to the board: the penalty still stays, it's just no longer on a clue on screen.
+    host.undo()
+    await flush()
+    expect(host.state.value.phase).toBe('board')
+    expect(host.state.value.players.map((p) => p.score)).toEqual([-100, 0])
+    expect(host.state.value.falseStarts).toHaveLength(1)
+  })
+
+  it('opens buzzers with the clue in quick draw and hides it from phones while someone answers', async () => {
+    const { host, player } = setup()
+    const [ann, bob] = [player(1), player(2)]
+    await flush()
+    ann.join('Ann')
+    bob.join('Bob')
+    await flush()
+    host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
+    host.dispatch({ type: 'startGame', settings: { openMode: 'instant' } })
+    host.dispatch({ type: 'selectClue', ref: { round: 0, category: 0, clue: 0 }, target: 2 })
+    await flush()
+    expect(ann.canBuzz.value).toBe(true)
+    expect(ann.state.value?.current?.text).toBe('The planet known as the Red Planet')
+    expect(ann.press()).toBe('buzzed')
+    await flush()
+    expect(bob.state.value?.current).toMatchObject({ status: 'answering', text: null })
+
+    host.dispatch({ type: 'judge', correct: false, target: 3 })
+    await flush()
+    expect(bob.canBuzz.value).toBe(true)
+    expect(bob.state.value?.current?.text).toBe('The planet known as the Red Planet')
+  })
+
   it('plays a practice buzz in the intro without scoring', async () => {
     const { host, player } = setup()
     const [ann, bob] = [player(1), player(2)]
@@ -161,11 +268,11 @@ describe('host and players over the bridge', () => {
     bob.join('Bob')
     await flush()
     host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
-    host.dispatch({ type: 'startGame', intro: true })
+    host.dispatch({ type: 'startGame', intro: true, settings: EMOJI })
     await flush()
     expect(ann.state.value?.phase).toBe('intro')
     expect(ann.press(3)).toBe('stunned')
-    await new Promise((r) => setTimeout(r, STUN_MS + 20))
+    await new Promise((r) => setTimeout(r, EMOJI_LOCKOUT + 20))
 
     host.dispatch({ type: 'openPractice', target: 3 })
     await flush()
@@ -191,7 +298,7 @@ describe('host and players over the bridge', () => {
     bob.join('Bob')
     await flush()
     host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
-    host.dispatch({ type: 'startGame', intro: true })
+    host.dispatch({ type: 'startGame', intro: true, settings: EMOJI })
 
     host.dispatch({ type: 'openPractice', target: 3 })
     await flush()
@@ -235,7 +342,7 @@ describe('host and players over the bridge', () => {
     ann.join('Ann')
     await flush()
     host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
-    host.dispatch({ type: 'startGame' })
+    host.dispatch({ type: 'startGame', settings: EMOJI })
     host.dispatch({ type: 'selectClue', ref: { round: 0, category: 0, clue: 0 } })
     host.dispatch({ type: 'openBuzzers', target: 2 })
     await flush()
@@ -252,7 +359,7 @@ describe('host and players over the bridge', () => {
     ann.join('Ann')
     await flush()
     host.dispatch({ type: 'loadBoard', board, dailyDoubles: ['0-0-0'] })
-    host.dispatch({ type: 'startGame' })
+    host.dispatch({ type: 'startGame', settings: EMOJI })
     host.dispatch({ type: 'selectClue', ref: { round: 0, category: 0, clue: 0 } })
     await flush()
     expect(ann.state.value?.current?.ddPlayer).toBe(ann.playerId)
