@@ -6,9 +6,10 @@ import ConnectionBadge from '@/components/ConnectionBadge.vue'
 import JoinQr from '@/components/JoinQr.vue'
 import Scoreboard from '@/components/Scoreboard.vue'
 import SourceLine from '@/components/SourceLine.vue'
-import { BUZZ_EMOJIS, formatSeconds, photoFinishText } from '@/game/buzzPad'
+import { BUZZ_EMOJIS, formatCountdown, formatSeconds, photoFinishText } from '@/game/buzzPad'
 import { ClientController } from '@/game/clientController'
 import { TIEBREAK_ID } from '@/game/engine'
+import { REACTION_SHOW_MS, REACTIONS } from '@/game/reactions'
 import { DEFAULT_SETTINGS, formatLockout } from '@/game/settings'
 import { useWakeLock } from '@/composables/useWakeLock'
 import { ignoreHotkey } from '@/keys'
@@ -33,6 +34,10 @@ const podium = computed(() => {
   return [r[1], r[0], r[2]].filter((p) => !!p)
 })
 const answerLeft = computed(() => client.remainingMs(cur.value?.answerEndsAt ?? null))
+const pause = computed(() => state.value?.pause ?? null)
+const pauseLeft = computed(() => client.remainingMs(pause.value?.until ?? null))
+const reactions = computed(() => client.reactions.value.filter((r) => client.clock.value - r.at < REACTION_SHOW_MS))
+const shownCategories = computed(() => state.value?.round?.categories.filter((c) => c.name !== null).length ?? 0)
 const photoFinish = computed(() => (cur.value ? photoFinishText(cur.value.buzzOrder, (id) => client.nameOf(id)) : ''))
 const highlight = computed(() => cur.value?.buzzWinner ?? final.value?.judging?.playerId ?? null)
 const practice = computed(() => state.value?.practice ?? null)
@@ -44,6 +49,9 @@ const penaltyShare = computed(() => (settings.value.falseStartPenalty ? `${setti
 const EXAMPLE_TARGET = 5
 
 const soundOn = ref(false)
+watch(shownCategories, (now, before) => {
+  if (now > before && phase.value === 'board' && soundOn.value) beep('category')
+})
 watch(answerLeft, (ms, before) => {
   if (ms === 0 && before && soundOn.value) beep('timeout')
 })
@@ -110,6 +118,17 @@ onUnmounted(() => {
 
     <section v-if="!state" class="center fill">
       <h1 class="serif">Waiting for host of room <span class="gold">{{ room }}</span>…</h1>
+    </section>
+
+    <!-- Break -->
+    <section v-else-if="pause" class="fill center stack break">
+      <h1 class="serif big-title">{{ pause.message || 'Short break' }} ☕</h1>
+      <p v-if="pauseLeft" class="value timer">Back in {{ formatCountdown(pauseLeft) }}</p>
+      <ol class="standings">
+        <li v-for="p in [...state.players].sort((a, b) => b.score - a.score)" :key="p.id">
+          <span>{{ p.name }}</span> <span class="value">{{ p.score }}</span>
+        </li>
+      </ol>
     </section>
 
     <!-- Lobby -->
@@ -280,7 +299,13 @@ onUnmounted(() => {
       <p v-if="final?.answer" class="muted">Final answer: {{ final.answer }}</p>
     </section>
 
-    <Scoreboard v-if="state && phase !== 'lobby'" :players="state.players" :control="state.control" :highlight="highlight" />
+    <div class="reactions" aria-hidden="true">
+      <span v-for="r in reactions" :key="r.id" class="reaction" :style="{ left: `${8 + ((r.id * 37) % 84)}%` }">
+        {{ REACTIONS[r.emoji] }}<small>{{ client.nameOf(r.playerId) }}</small>
+      </span>
+    </div>
+
+    <Scoreboard v-if="state && phase !== 'lobby' && !pause" :players="state.players" :control="state.control" :highlight="highlight" />
     <Scoreboard v-else-if="state" :players="state.players" />
   </main>
 </template>
@@ -460,6 +485,57 @@ onUnmounted(() => {
 }
 .locked {
   font-size: 1.1em;
+}
+.break .standings {
+  font-size: 2em;
+  margin: 0;
+  padding: 0;
+  list-style-position: inside;
+}
+.break .standings li {
+  display: flex;
+  gap: 1em;
+  justify-content: space-between;
+}
+.reactions {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.reaction {
+  position: absolute;
+  bottom: 0;
+  display: grid;
+  justify-items: center;
+  font-size: 3em;
+  animation: float 4s ease-out forwards;
+}
+.reaction small {
+  font-size: 0.3em;
+  font-weight: 700;
+  text-shadow: 1px 1px 0 #000;
+}
+@keyframes float {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-70vh);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reaction {
+    animation-name: fade-out;
+    bottom: 10vh;
+  }
+}
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
 }
 .answer-timer {
   display: flex;

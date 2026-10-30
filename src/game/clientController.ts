@@ -3,6 +3,7 @@ import type { BridgeClient, ConnectionStatus } from '@/net/bridgeClient'
 import { decode, encode, type OutgoingMessage } from '@/net/protocol'
 import { PRACTICE_ID } from './engine'
 import type { KeyValueStorage } from './hostController'
+import { MAX_REACTIONS, REACTION_INTERVAL_MS, REACTION_SHOW_MS, type FloatingReaction } from './reactions'
 import { liveClueValue, revealProgress } from './reveal'
 import { roomTopic } from './roomCode'
 import { DEFAULT_SETTINGS } from './settings'
@@ -52,6 +53,11 @@ export class ClientController {
   readonly stunned = ref(false)
   private readonly stunEndsAt = ref(0)
   private stunTimer: ReturnType<typeof setTimeout> | null = null
+  /** Board screens: reactions floating on screen right now. */
+  readonly reactions = shallowRef<FloatingReaction[]>([])
+  private reactionCount = 0
+  /** When each player (or, on a phone, this player) last reacted. */
+  private lastReactionAt = new Map<string, number>()
 
   private readonly bridge: BridgeClient
   private readonly topic: string
@@ -216,6 +222,30 @@ export class ClientController {
     return this.send({ type: 'wager', from: 'player', playerId: this.playerId, kind, amount })
   }
 
+  /** Sends a reaction to the TV, at most one per second. */
+  react(emoji: number): boolean {
+    if (!this.settings.value.reactions || !this.me.value || !this.allowReaction(this.playerId)) return false
+    return this.send({ type: 'react', from: 'player', playerId: this.playerId, emoji })
+  }
+
+  /** Rate limit per player: one reaction per REACTION_INTERVAL_MS. */
+  private allowReaction(playerId: string): boolean {
+    const now = this.now()
+    if (now - (this.lastReactionAt.get(playerId) ?? -Infinity) < REACTION_INTERVAL_MS) return false
+    this.lastReactionAt.set(playerId, now)
+    return true
+  }
+
+  /** Board screens show reactions from players in the game, when the host allows them. */
+  private showReaction(playerId: string, emoji: number) {
+    const state = this.state.value
+    if (this.role !== 'board' || !state?.settings.reactions || !state.players.some((p) => p.id === playerId)) return
+    if (!this.allowReaction(playerId)) return
+    const now = this.now()
+    const live = this.reactions.value.filter((r) => now - r.at < REACTION_SHOW_MS).slice(-(MAX_REACTIONS - 1))
+    this.reactions.value = [...live, { id: ++this.reactionCount, playerId, emoji, at: now }]
+  }
+
   finalAnswer(text: string): boolean {
     return this.send({ type: 'final_answer', from: 'player', playerId: this.playerId, text })
   }
@@ -257,6 +287,7 @@ export class ClientController {
       this.openedLocally.value = { clueId: message.clueId, attempt: message.attempt }
       return
     }
+    if (message.type === 'react') return this.showReaction(message.playerId, message.emoji)
     if (message.type !== 'state' || message.state.roomCode !== this.roomCode) return
     const state = message.state as unknown as PublicState
     const now = this.now()

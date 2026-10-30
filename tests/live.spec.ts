@@ -48,7 +48,7 @@ describe.skipIf(!url)('live bridge', () => {
     await until(() => host.state.value.players.length === 4)
 
     host.dispatch({ type: 'loadBoard', board: BoardSchema.parse(sample), dailyDoubles: [] })
-    host.dispatch({ type: 'startGame' })
+    host.dispatch({ type: 'startGame', settings: { roundIntro: false } })
     host.dispatch({ type: 'selectClue', ref: { round: 0, category: 0, clue: 0 } })
     host.dispatch({ type: 'openBuzzers', target: 0 })
     await until(() => players.every(({ c }) => c.canBuzz.value))

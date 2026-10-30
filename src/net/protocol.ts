@@ -1,7 +1,8 @@
 import { z } from 'zod'
+import { REACTIONS } from '@/game/reactions'
 import type { PublicState } from '@/game/types'
 
-export const PROTOCOL_VERSION = 6
+export const PROTOCOL_VERSION = 7
 
 const id = z.string().min(1).max(64)
 const base = { v: z.literal(PROTOCOL_VERSION) }
@@ -33,6 +34,14 @@ export const MessageSchema = z.discriminatedUnion('type', [
     amount: z.number(),
   }),
   z.object({ ...base, type: z.literal('final_answer'), from: z.literal('player'), playerId: id, text: z.string().max(500) }),
+  // Players → board screens (the host ignores these).
+  z.object({
+    ...base,
+    type: z.literal('react'),
+    from: z.literal('player'),
+    playerId: id,
+    emoji: z.number().int().min(0).max(REACTIONS.length - 1),
+  }),
 ])
 
 export type Message = z.infer<typeof MessageSchema>

@@ -6,6 +6,12 @@ export function formatSeconds(ms: number): string {
   return `${(ms / 1000).toFixed(2)} s`
 }
 
+/** A countdown, e.g. `4:05`. */
+export function formatCountdown(ms: number): string {
+  const seconds = Math.ceil(ms / 1000)
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+}
+
 /** Runner-ups behind the buzz winner, e.g. `Bob +0.08 s · Cid +0.21 s`. Empty without a photo finish. */
 export function photoFinishText(order: { playerId: string; ms: number }[], nameOf: (id: string) => string | null): string {
   const [winner, ...rest] = order

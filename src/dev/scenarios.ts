@@ -37,10 +37,12 @@ function lobby(players = true, b = board): GameState {
 }
 
 const EMOJI: Partial<GameSettings> = { buzzStyle: 'emoji' }
+/** Most scenarios start mid-round, with every category on the board. */
+const NO_ROUND_INTRO: Partial<GameSettings> = { roundIntro: false }
 const QUICK_DRAW: Partial<GameSettings> = { openMode: 'instant' }
 
 function midRound(b = board, settings: Partial<GameSettings> = {}): GameState {
-  const s = run(lobby(true, b), [{ type: 'startGame', settings }])
+  const s = run(lobby(true, b), [{ type: 'startGame', settings: { ...NO_ROUND_INTRO, ...settings } }])
   // A few clues already played.
   s.used = ['0-0-0', '0-0-1', '0-1-0', '0-2-0', '0-3-0', '0-3-1', '0-4-0', '0-4-2']
   s.players[0]!.score = 1400
@@ -219,7 +221,13 @@ export const scenarios = {
   'Intro: practice open': () => ({ state: intro(), live: [{ type: 'openPractice', target: DEMO_TARGET }] }),
   'Intro: practice open, emoji pad': () => ({ state: intro(EMOJI), live: [{ type: 'openPractice', target: DEMO_TARGET }] }),
   'Intro: practice results': () => ({ state: practiceResults() }),
+  'Round intro: two categories shown': () => ({
+    state: run(lobby(), [{ type: 'startGame' }, { type: 'showNextCategory' }, { type: 'showNextCategory' }]),
+  }),
   Board: () => ({ state: midRound() }),
+  'Break: pizza': () => ({
+    state: run(midRound(), [{ type: 'pause', message: 'Pizza is here', until: Date.now() + 5 * 60_000 }]),
+  }),
   'Clue: reading': () => ({ state: clue() }),
   'Clue: buzzers open': () => ({ state: clue(), live: [{ type: 'openBuzzers', target: DEMO_TARGET }] }),
   'Clue: Ann jumped the gun': () => ({ state: falseStart() }),

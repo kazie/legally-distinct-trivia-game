@@ -5,7 +5,7 @@ import ClueExtras from '@/components/ClueExtras.vue'
 import ConnectionBadge from '@/components/ConnectionBadge.vue'
 import JoinQr from '@/components/JoinQr.vue'
 import MediaCheck from '@/components/MediaCheck.vue'
-import { BUZZ_EMOJIS, formatSeconds, photoFinishText, pickBuzzTarget } from '@/game/buzzPad'
+import { BUZZ_EMOJIS, formatCountdown, formatSeconds, photoFinishText, pickBuzzTarget } from '@/game/buzzPad'
 import { allBoards, downloadCsv, downloadJson, type BoardEntry } from '@/content/boards'
 import { lintBoard } from '@/content/lint'
 import { clueOf, ddMaxWager, pickDailyDoubles, TIEBREAK_ID, type Action } from '@/game/engine'
@@ -34,6 +34,8 @@ const pub = computed(() => toPublicState(game.value, clock.value))
 const boards = shallowRef<BoardEntry[]>(allBoards())
 const selectedBoardKey = ref(game.value.board ? `${boardSource(game.value.board.id)}:${game.value.board.id}` : '')
 const finalSeconds = ref(30)
+const pauseMinutes = ref(0)
+const pauseMessage = ref('')
 const wagerInput = ref<number | null>(null)
 const adjust = ref<Record<string, number | null>>({})
 const showIntro = ref(local?.getItem(SHOW_INTRO_KEY) !== 'false')
@@ -150,11 +152,27 @@ function copy(text: string) {
   navigator.clipboard?.writeText(text)
 }
 
+/** Breaks are only between clues. */
+const canPause = computed(() => (game.value.phase === 'board' || game.value.phase === 'final_category') && !game.value.pause)
+
+function togglePause() {
+  if (game.value.pause) return act({ type: 'resume' })
+  const until = pauseMinutes.value ? Date.now() + pauseMinutes.value * 60_000 : null
+  act({ type: 'pause', message: pauseMessage.value, until })
+}
+
 function onKey(event: KeyboardEvent) {
   if (ignoreHotkey(event)) return
   const c = cur.value
   const key = event.key.toLowerCase()
   if (key === 'z') return host.undo()
+  if (key === 'p' && !event.repeat && (game.value.pause || canPause.value)) return togglePause()
+  if (game.value.phase === 'board' && game.value.categoriesShown !== null && !event.repeat) {
+    if (key === ' ' || key === 'arrowright') act({ type: 'showNextCategory' })
+    else if (key === 'enter') act({ type: 'showAllCategories' })
+    else return
+    return event.preventDefault()
+  }
   if (game.value.phase === 'intro' && (key === ' ' || key === 'b')) {
     // Holding the key would otherwise reopen practice on every auto-repeat.
     if (!event.repeat) openPractice()
@@ -295,6 +313,14 @@ onUnmounted(() => {
               <span class="muted">(a countdown on the TV; you still judge)</span>
             </label>
             <label class="check">
+              <input v-model="settings.roundIntro" type="checkbox" />
+              Reveal each round's categories one by one
+            </label>
+            <label class="check">
+              <input v-model="settings.reactions" type="checkbox" />
+              Players can send emoji reactions to the TV
+            </label>
+            <label class="check">
               <input v-model="settings.mediaOnPhones" type="checkbox" />
               Show pictures and video on phones too (audio always plays there)
             </label>
@@ -339,6 +365,17 @@ onUnmounted(() => {
         </ol>
       </div>
 
+      <!-- Break -->
+      <div v-else-if="game.pause" class="panel stack">
+        <h2>Break ☕</h2>
+        <p>
+          The board screen shows “{{ game.pause.message || 'Short break' }}”
+          <template v-if="game.pause.until">and counts down: back in {{ formatCountdown(Math.max(0, game.pause.until - clock)) }}</template>
+          <template v-else>with no timer</template>.
+        </p>
+        <button class="primary big" @click="act({ type: 'resume' })">Resume <kbd>P</kbd></button>
+      </div>
+
       <!-- Board -->
       <div v-else-if="game.phase === 'board' && pub.round" class="stack">
         <div class="row">
@@ -352,6 +389,15 @@ onUnmounted(() => {
             Go to final
           </button>
           <button class="small ghost" @click="confirmThen('End the game now?', { type: 'endGame' })">End game</button>
+        </div>
+        <div v-if="pub.round.categoriesShown !== null" class="row">
+          <button class="primary big" @click="act({ type: 'showNextCategory' })">
+            Next category ({{ pub.round.categoriesShown + 1 }}/{{ pub.round.categories.length }}) <kbd>Space</kbd>
+          </button>
+          <button @click="act({ type: 'showAllCategories' })">Show all <kbd>Enter</kbd></button>
+          <span class="muted">
+            Next up: {{ board?.rounds[game.round]?.categories[pub.round.categoriesShown]?.name }}
+          </span>
         </div>
         <BoardGrid :round="pub.round" selectable :daily-doubles="game.dailyDoubles" @select="selectClue" />
       </div>
@@ -532,6 +578,18 @@ onUnmounted(() => {
           <RouterLink class="btn" to="/host">New room</RouterLink>
         </div>
       </div>
+
+      <div v-if="canPause" class="row">
+        <label class="inline">
+          Break
+          <select v-model.number="pauseMinutes">
+            <option :value="0">no timer</option>
+            <option v-for="m in [5, 10, 15]" :key="m" :value="m">{{ m }} min</option>
+          </select>
+        </label>
+        <input v-model="pauseMessage" maxlength="80" placeholder="Message on the TV (optional)" />
+        <button class="small" @click="togglePause">☕ Take a break <kbd>P</kbd></button>
+      </div>
     </section>
 
     <aside class="panel stack players">
@@ -561,7 +619,7 @@ onUnmounted(() => {
         </div>
       </div>
       <p v-if="game.players.length === 0" class="muted">Waiting for players to join…</p>
-      <p class="muted keys">Keys: Space open · C correct · X incorrect · R reveal · Enter board · Z undo</p>
+      <p class="muted keys">Keys: Space open · C correct · X incorrect · R reveal · Enter board · P break · Z undo</p>
     </aside>
   </main>
 </template>

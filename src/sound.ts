@@ -1,10 +1,14 @@
 /** Tiny synthesized sound effects, so the project ships no audio assets. */
 
-type Effect = 'buzz' | 'open' | 'correct' | 'timeout'
+type Effect = 'buzz' | 'open' | 'correct' | 'timeout' | 'category'
 
 const TONES: Record<Effect, { freq: number; ms: number; type: OscillatorType }[]> = {
   buzz: [{ freq: 220, ms: 350, type: 'square' }],
   open: [{ freq: 880, ms: 120, type: 'sine' }],
+  category: [
+    { freq: 523, ms: 90, type: 'sine' },
+    { freq: 784, ms: 160, type: 'sine' },
+  ],
   correct: [
     { freq: 660, ms: 120, type: 'triangle' },
     { freq: 990, ms: 220, type: 'triangle' },

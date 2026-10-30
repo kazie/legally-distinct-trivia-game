@@ -18,6 +18,10 @@ export interface GameSettings {
   mediaOnPhones: boolean
   /** Time to answer after buzzing in, shown as a countdown (0 = no timer). The host still judges. */
   answerTimerMs: number
+  /** Each round starts with the categories revealed one by one, like on TV. */
+  roundIntro: boolean
+  /** Players can send emoji reactions that float up on the TV. */
+  reactions: boolean
 }
 
 export const PENALTY_CHOICES = [0, 0.25, 0.5, 1] as const
@@ -33,6 +37,8 @@ export const DEFAULT_SETTINGS: GameSettings = {
   wrongAnswerPenalty: true,
   mediaOnPhones: false,
   answerTimerMs: 0,
+  roundIntro: true,
+  reactions: true,
 }
 
 const flag = (value: unknown, fallback: boolean) => (typeof value === 'boolean' ? value : fallback)
@@ -53,6 +59,8 @@ export function normalizeSettings(raw: unknown): GameSettings {
     emojiOnPhones: flag(r.emojiOnPhones, d.emojiOnPhones),
     wrongAnswerPenalty: flag(r.wrongAnswerPenalty, d.wrongAnswerPenalty),
     mediaOnPhones: flag(r.mediaOnPhones, d.mediaOnPhones),
+    roundIntro: flag(r.roundIntro, d.roundIntro),
+    reactions: flag(r.reactions, d.reactions),
     answerTimerMs: pick(r.answerTimerMs, ANSWER_TIMER_CHOICES, d.answerTimerMs as (typeof ANSWER_TIMER_CHOICES)[number]),
   }
 }

@@ -215,6 +215,50 @@ describe('story harness renders real screens', () => {
     expect(rows.find((r) => r.includes('Edison'))).not.toContain('matches')
   })
 
+  it('reveals the categories one by one on the TV, phones and host', async () => {
+    const w = await render('Round intro: two categories shown', () => [
+      h('div', { class: 'tv' }, [h(BoardView, { room: DEMO_ROOM })]),
+      h('div', { class: 'phone' }, [h(StoryPlayer, { playerId: ANN })]),
+      h(HostView, { room: DEMO_ROOM }),
+    ], false)
+    expect(w.findAll('.tv .head').map((e) => e.text())).toEqual(['Space', 'Animals', '', '', ''])
+    expect(w.findAll('.phone .categories li').map((e) => e.text())).toEqual(['Space', 'Animals'])
+    await w.findAll('button').find((b) => b.text().startsWith('Next category (3/5)'))!.trigger('click')
+    await settle()
+    expect(w.find('.tv .head.flip').text()).toBe('Food & Drink')
+    await w.findAll('button').find((b) => b.text().startsWith('Show all'))!.trigger('click')
+    await settle()
+    expect(w.findAll('.tv .head.hidden')).toHaveLength(0)
+    expect(w.find('.phone .categories').exists()).toBe(false)
+  })
+
+  it('shows a break on the TV and phones until the host resumes', async () => {
+    const w = await render('Break: pizza', () => [
+      h('div', { class: 'tv' }, [h(BoardView, { room: DEMO_ROOM })]),
+      h('div', { class: 'phone' }, [h(StoryPlayer, { playerId: ANN })]),
+      h(HostView, { room: DEMO_ROOM }),
+    ], false)
+    expect(w.find('.tv .break').text()).toMatch(/Pizza is here ☕\s*Back in [45]:\d\d/)
+    expect(w.find('.phone').text()).toContain('Pizza is here')
+    await w.findAll('button').find((b) => b.text().startsWith('Resume'))!.trigger('click')
+    await settle()
+    expect(w.find('.tv .break').exists()).toBe(false)
+    expect(w.find('.tv .grid').exists()).toBe(true)
+  })
+
+  it('floats reactions from phones up the TV, but not while buzzers are open', async () => {
+    const w = await render('Board', () => [
+      h('div', { class: 'tv' }, [h(BoardView, { room: DEMO_ROOM })]),
+      h('div', { class: 'phone' }, [h(StoryPlayer, { playerId: ANN })]),
+    ])
+    await w.find('.phone .react-row button').trigger('click')
+    await settle()
+    expect(w.find('.tv .reaction').text()).toBe('😂Ann')
+
+    const open = await render('Clue: buzzers open', () => [h(StoryPlayer, { playerId: ANN })])
+    expect(open.find('.react-row').exists()).toBe(false)
+  })
+
   it('lets the host judge from the control panel', async () => {
     const w = await render('Clue: Bob answering', () => [h(HostView, { room: DEMO_ROOM }), h(StoryPlayer, { playerId: BOB })], false)
     const correct = w.findAll('button').find((b) => b.text().startsWith('Correct'))!

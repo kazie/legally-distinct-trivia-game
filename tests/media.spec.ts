@@ -40,7 +40,7 @@ function started(dailyDoubles: string[] = []): GameState {
     { type: 'loadBoard', board, dailyDoubles },
     { type: 'playerJoined', id: 'p1', name: 'Ann', now: 0 },
     { type: 'playerJoined', id: 'p2', name: 'Bob', now: 0 },
-    { type: 'startGame', settings: { buzzStyle: 'button' } },
+    { type: 'startGame', settings: { buzzStyle: 'button', roundIntro: false } },
   )
 }
 
