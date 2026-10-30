@@ -1,5 +1,6 @@
 import type { Clue, Final } from '@/content/schema'
 import { clueId, ddMaxWager, falseStartsOn } from './engine'
+import { awards, ranking, streaks } from './stats'
 import type { BuzzWindow, GameState, PublicCurrentClue, PublicFinal, PublicPractice, PublicState } from './types'
 
 /** A player counts as connected if the host heard from them this recently. */
@@ -9,6 +10,7 @@ export const PLAYER_TIMEOUT_MS = 12_000
 export function toPublicState(state: GameState, now: number): PublicState {
   const board = state.board
   const round = board?.rounds[state.round]
+  const streak = streaks(state.history).current
 
   return {
     roomCode: state.roomCode,
@@ -35,11 +37,13 @@ export function toPublicState(state: GameState, now: number): PublicState {
       name: p.name,
       score: p.score,
       connected: now - p.lastSeenAt < PLAYER_TIMEOUT_MS,
+      streak: streak[p.id] ?? 0,
     })),
     control: state.control,
     current: publicCurrent(state),
     final: publicFinal(state),
     practice: publicPractice(state),
+    gameOver: state.phase === 'game_over' ? { ranking: ranking(state.players), awards: awards(state) } : null,
     settings: state.settings,
     hostTime: now,
   }
@@ -89,6 +93,8 @@ function publicCurrent(state: GameState): PublicCurrentClue | null {
     ddMaxWager: cur.dailyDouble ? ddMaxWager(state, cur.ddPlayer) : null,
     lockedUntil: cur.lockedUntil,
     falseStarts: falseStartsOn(state, cur.id),
+    buzzOrder: cur.buzzOrder,
+    answerEndsAt: cur.answerEndsAt,
   }
 }
 

@@ -6,7 +6,7 @@ import { toPublicState } from './publicView'
 import { pauseReveal } from './reveal'
 import { roomTopic } from './roomCode'
 import { LOCKOUT_CHOICES, normalizeSettings } from './settings'
-import type { GameState } from './types'
+import type { CurrentClue, GameState } from './types'
 
 export const HEARTBEAT_MS = 3000
 const HISTORY_LIMIT = 50
@@ -243,9 +243,12 @@ export class HostController {
       )
       delete saved.emojiOnPhones
       saved.falseStarts ??= []
+      saved.history ??= []
       if (saved.current) {
+        // Saved before blur reveals, buzz times and the answer timer.
+        const defaults: Partial<CurrentClue> = { reveal: null, openedAt: null, buzzOrder: [], attempts: [], photoFinish: null, answerEndsAt: null }
+        saved.current = { ...defaults, ...saved.current }
         saved.current.lockedUntil ??= {}
-        saved.current.reveal ??= null
       }
       if (saved.practice) saved.practice.lockedUntil ??= {}
       // Buzzes that raced a reload are gone.

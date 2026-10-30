@@ -3,10 +3,10 @@ import { reactive } from 'vue'
 import Scoreboard from './Scoreboard.vue'
 
 const players = reactive([
-  { id: 'a', name: 'Ann', score: 2400, connected: true },
-  { id: 'b', name: 'Bob', score: 600, connected: true },
-  { id: 'c', name: 'Cid', score: -400, connected: false },
-  { id: 'd', name: 'Dagny with a really long name', score: 0, connected: true },
+  { id: 'a', name: 'Ann', score: 2400, connected: true, streak: 3 },
+  { id: 'b', name: 'Bob', score: 600, connected: true, streak: 0 },
+  { id: 'c', name: 'Cid', score: -400, connected: false, streak: 0 },
+  { id: 'd', name: 'Dagny with a really long name', score: 0, connected: true, streak: 1 },
 ])
 const state = reactive({ control: 'a', highlight: 'b', sorted: false })
 </script>

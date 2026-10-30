@@ -161,6 +161,40 @@ describe('story harness renders real screens', () => {
     }
   })
 
+  it('shows a photo finish on the TV and the host panel', async () => {
+    const w = await render('Clue: photo finish', () => [h(BoardView, { room: DEMO_ROOM }), h(HostView, { room: DEMO_ROOM })], false)
+    expect(w.find('.photo-finish').text()).toBe('📸 Ann +0.08 s · Cid +0.21 s')
+    expect(w.find('.host').text()).toContain('📸 Ann +0.08 s · Cid +0.21 s')
+  })
+
+  it('counts down the answer timer on the TV and the answering phone', async () => {
+    const w = await render('Clue: answer timer running', () => [
+      h(BoardView, { room: DEMO_ROOM }),
+      h('div', { class: 'bob' }, [h(StoryPlayer, { playerId: BOB })]),
+    ])
+    expect(Number(w.find('.answer-timer span').text())).toBeGreaterThan(8)
+    expect(w.find('.bob').text()).toMatch(/Say your answer · \d+ s/)
+  })
+
+  it('ends with a podium and awards, and tells each phone its place', async () => {
+    const w = await render('Game over', () => [
+      h('div', { class: 'tv' }, [h(BoardView, { room: DEMO_ROOM })]),
+      h('div', { class: 'ann' }, [h(StoryPlayer, { playerId: ANN })]),
+    ])
+    expect(w.findAll('.tv .step .pname').map((e) => e.text())).toEqual(['Bob', 'Ann', 'Cid'])
+    expect(w.find('.tv .awards').text()).toContain('On fire')
+    expect(w.find('.ann').text()).toContain('You win!')
+    expect(w.find('.ann .my-awards').text()).toContain('3 in a row')
+  })
+
+  it('floats the change when a score changes', async () => {
+    const w = await render('Clue: Bob answering', () => [h(HostView, { room: DEMO_ROOM }), h(BoardView, { room: DEMO_ROOM })], false)
+    expect(w.find('.pop').exists()).toBe(false)
+    await w.findAll('button').find((b) => b.text().startsWith('Correct'))!.trigger('click')
+    await settle()
+    expect(w.find('.pop').text()).toBe('+600')
+  })
+
   it('lets the host judge from the control panel', async () => {
     const w = await render('Clue: Bob answering', () => [h(HostView, { room: DEMO_ROOM }), h(StoryPlayer, { playerId: BOB })], false)
     const correct = w.findAll('button').find((b) => b.text().startsWith('Correct'))!

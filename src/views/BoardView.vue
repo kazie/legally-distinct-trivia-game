@@ -6,7 +6,7 @@ import ConnectionBadge from '@/components/ConnectionBadge.vue'
 import JoinQr from '@/components/JoinQr.vue'
 import Scoreboard from '@/components/Scoreboard.vue'
 import SourceLine from '@/components/SourceLine.vue'
-import { BUZZ_EMOJIS, formatSeconds } from '@/game/buzzPad'
+import { BUZZ_EMOJIS, formatSeconds, photoFinishText } from '@/game/buzzPad'
 import { ClientController } from '@/game/clientController'
 import { DEFAULT_SETTINGS, formatLockout } from '@/game/settings'
 import { useWakeLock } from '@/composables/useWakeLock'
@@ -25,7 +25,14 @@ const cur = computed(() => state.value?.current ?? null)
 const final = computed(() => state.value?.final ?? null)
 const phase = computed(() => state.value?.phase ?? null)
 const finalRemaining = computed(() => client.remainingMs(final.value?.answerEndsAt ?? null))
-const ranking = computed(() => [...(state.value?.players ?? [])].sort((a, b) => b.score - a.score))
+const gameOver = computed(() => state.value?.gameOver ?? null)
+/** Second, first, third: the winner stands in the middle. */
+const podium = computed(() => {
+  const r = gameOver.value?.ranking ?? []
+  return [r[1], r[0], r[2]].filter((p) => !!p)
+})
+const answerLeft = computed(() => client.remainingMs(cur.value?.answerEndsAt ?? null))
+const photoFinish = computed(() => (cur.value ? photoFinishText(cur.value.buzzOrder, (id) => client.nameOf(id)) : ''))
 const highlight = computed(() => cur.value?.buzzWinner ?? final.value?.judging?.playerId ?? null)
 const practice = computed(() => state.value?.practice ?? null)
 const settings = computed(() => state.value?.settings ?? DEFAULT_SETTINGS)
@@ -36,6 +43,9 @@ const penaltyShare = computed(() => (settings.value.falseStartPenalty ? `${setti
 const EXAMPLE_TARGET = 5
 
 const soundOn = ref(false)
+watch(answerLeft, (ms, before) => {
+  if (ms === 0 && before && soundOn.value) beep('timeout')
+})
 watch(
   () => cur.value?.buzzWinner,
   (winner) => winner && soundOn.value && beep('buzz'),
@@ -196,6 +206,11 @@ onUnmounted(() => {
           {{ buzzWinnerName }}
           <small>{{ cur.dailyDouble ? `Daily Double for ${cur.value}` : 'buzzed in!' }}</small>
         </div>
+        <div v-if="cur.status === 'answering' && answerLeft !== null" class="answer-timer">
+          <div class="bar"><div :style="{ width: `${(answerLeft / settings.answerTimerMs) * 100}%` }" /></div>
+          <span>{{ Math.ceil(answerLeft / 1000) }}</span>
+        </div>
+        <div v-if="photoFinish && cur.status !== 'revealed'" class="muted photo-finish">📸 {{ photoFinish }}</div>
         <div v-else-if="cur.status === 'open' && cur.target !== null" class="target">
           <span class="target-emoji">{{ BUZZ_EMOJIS[cur.target] }}</span>
           <small class="gold">Tap it to buzz!</small>
@@ -242,9 +257,24 @@ onUnmounted(() => {
     </section>
 
     <!-- Game over -->
-    <section v-else-if="phase === 'game_over'" class="fill center stack">
+    <section v-else-if="phase === 'game_over' && gameOver" class="fill game-over">
       <h1 class="serif big-title">Game over</h1>
-      <p v-if="ranking[0]" class="winner">🏆 <span class="gold">{{ ranking[0].name }}</span> wins with {{ ranking[0].score }}!</p>
+      <div class="podium">
+        <div v-for="p in podium" :key="p.playerId" class="step" :class="`rank-${p.rank}`">
+          <span class="medal">{{ ['🥇', '🥈', '🥉'][p.rank - 1] ?? '' }}</span>
+          <strong class="pname">{{ client.nameOf(p.playerId) }}</strong>
+          <span class="value">{{ p.score }}</span>
+          <div class="block">{{ p.rank }}</div>
+        </div>
+      </div>
+      <div v-if="gameOver.awards.length" class="awards">
+        <div v-for="(a, i) in gameOver.awards" :key="a.key" class="award" :style="{ animationDelay: `${1.5 + i * 0.6}s` }">
+          <span class="award-emoji">{{ a.emoji }}</span>
+          <strong class="gold">{{ a.title }}</strong>
+          <span>{{ a.playerIds.map((id) => client.nameOf(id)).join(' & ') }}</span>
+          <small class="muted">{{ a.detail }}</small>
+        </div>
+      </div>
       <p v-if="final?.answer" class="muted">Final answer: {{ final.answer }}</p>
     </section>
 
@@ -429,8 +459,106 @@ onUnmounted(() => {
 .locked {
   font-size: 1.1em;
 }
-.winner {
-  font-size: 2.4em;
+.answer-timer {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  width: min(30em, 80%);
+  font-size: 1.6em;
+  font-weight: 800;
+}
+.answer-timer .bar {
+  flex: 1;
+  height: 0.5em;
+  background: var(--cell-border);
+  border-radius: 1em;
+  overflow: hidden;
+}
+.answer-timer .bar div {
+  height: 100%;
+  background: var(--gold);
+  transition: width 0.25s linear;
+}
+.photo-finish {
+  font-size: 1.3em;
+}
+.game-over {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 1.5rem;
+  text-align: center;
+}
+.podium {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+}
+.step {
+  display: grid;
+  justify-items: center;
+  gap: 0.2em;
+  width: 9em;
+  animation: rise 0.8s ease-out both;
+}
+.step.rank-1 {
+  animation-delay: 0.6s;
+}
+.step .pname {
+  font-size: 1.4em;
+  overflow-wrap: anywhere;
+}
+.medal {
+  font-size: 2.5em;
+}
+.block {
+  width: 100%;
+  background: var(--cell-bg);
+  border: 4px solid var(--cell-border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  font-size: 2.5em;
+  font-weight: 900;
+  color: var(--gold);
+  padding-top: 0.3em;
+}
+.rank-1 .block {
+  height: 5em;
+}
+.rank-2 .block {
+  height: 3.5em;
+}
+.rank-3 .block {
+  height: 2.5em;
+}
+.awards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.8rem;
+}
+.award {
+  display: grid;
+  gap: 0.2em;
+  background: var(--panel-2);
+  border-radius: var(--radius);
+  padding: 0.6em 1em;
+  min-width: 10em;
+  animation: pop 0.4s ease-out both;
+}
+.award-emoji {
+  font-size: 2em;
+}
+@keyframes rise {
+  from {
+    transform: translateY(40%);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .step,
+  .award {
+    animation: none;
+  }
 }
 @keyframes pop {
   from {

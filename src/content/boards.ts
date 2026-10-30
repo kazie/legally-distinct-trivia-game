@@ -72,7 +72,27 @@ export function findBoard(id: string, source?: BoardSource): BoardEntry | undefi
 }
 
 export function downloadJson(filename: string, data: unknown): void {
-  const blob = new Blob([JSON.stringify(data, null, 2) + '\n'], { type: 'application/json' })
+  download(filename, JSON.stringify(data, null, 2) + '\n', 'application/json')
+}
+
+/** One cell: quoted when needed, and text a spreadsheet would run as a formula (`=…`) made harmless. */
+function csvCell(value: string | number | null): string {
+  if (value === null) return ''
+  if (typeof value === 'number') return String(value)
+  const text = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+}
+
+export function toCsv(rows: (string | number | null)[][]): string {
+  return rows.map((row) => row.map(csvCell).join(',')).join('\r\n') + '\r\n'
+}
+
+export function downloadCsv(filename: string, rows: (string | number | null)[][]): void {
+  download(filename, toCsv(rows), 'text/csv')
+}
+
+function download(filename: string, text: string, type: string): void {
+  const blob = new Blob([text], { type })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url

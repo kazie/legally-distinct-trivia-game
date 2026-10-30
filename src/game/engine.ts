@@ -67,6 +67,7 @@ export function createGame(roomCode: string): GameState {
     buzzRound: 0,
     settings: { ...DEFAULT_SETTINGS },
     falseStarts: [],
+    history: [],
   }
 }
 
@@ -122,6 +123,46 @@ function lowestScorer(players: Player[]): string | null {
   return players.reduce((low, p) => (p.score < low.score ? p : low)).id
 }
 
+/** Files the clue on screen into the game's history, for stats and the results export. */
+function recordClue(s: GameState, cur: CurrentClue) {
+  s.history.push({
+    clueId: cur.id,
+    round: cur.ref.round,
+    category: s.board?.rounds[cur.ref.round]?.categories[cur.ref.category]?.name ?? '',
+    value: cur.value,
+    dailyDouble: cur.dailyDouble,
+    attempts: cur.attempts,
+    photoFinish: cur.photoFinish,
+    scoresAfter: Object.fromEntries(s.players.map((p) => [p.id, p.score])),
+  })
+}
+
+/** Someone is answering: start the answer timer, if the host uses one. */
+function startAnswerTimer(s: GameState, cur: CurrentClue, now: number) {
+  cur.answerEndsAt = s.settings.answerTimerMs ? now + s.settings.answerTimerMs : null
+}
+
+/** How long after the buzzers opened a press reached the host. */
+function buzzMs(cur: CurrentClue, now: number): number {
+  return Math.max(0, now - (cur.openedAt ?? now))
+}
+
+/**
+ * A right press on the same opening that reached the host just after the winner's: a photo finish. Phones stop
+ * sending once they see someone answering, so these only come from near-simultaneous presses.
+ */
+function runnerUp(cur: CurrentClue, playerId: string, now: number): boolean {
+  if (cur.buzzOrder.length >= 3 || cur.buzzOrder.some((b) => b.playerId === playerId)) return false
+  const ms = buzzMs(cur, now)
+  const winner = cur.buzzOrder[0]!
+  cur.buzzOrder.push({ playerId, ms })
+  const gapMs = ms - winner.ms
+  if (cur.buzzOrder.length === 2 && (!cur.photoFinish || gapMs < cur.photoFinish.gapMs)) {
+    cur.photoFinish = { playerIds: [winner.playerId, playerId], gapMs }
+  }
+  return true
+}
+
 /** Moves on after a round is finished: next round, the final, or the end of the game. */
 function advanceRound(s: GameState) {
   s.current = null
@@ -158,6 +199,7 @@ function openWindow(s: GameState, w: BuzzWindow, target: number) {
   w.attempt = s.buzzRound
   w.openSeq = null
   w.target = target
+  if (w === s.current) s.current.buzzOrder = []
 }
 
 /** The id `buzzers_open` and `buzz` messages use for the buzzers in play: the practice during the intro, or the clue on screen. */
@@ -222,6 +264,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       s.phase = action.intro ? 'intro' : 'board'
       s.settings = normalizeSettings(action.settings)
       s.falseStarts = []
+      s.history = []
       s.round = 0
       s.used = []
       s.current = null
@@ -255,6 +298,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       s.final = null
       s.practice = null
       s.falseStarts = []
+      s.history = []
       s.players.forEach((p) => (p.score = 0))
       return true
 
@@ -286,6 +330,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       if (cur?.buzzWinner === action.id && cur.status === 'answering' && !cur.dailyDouble) {
         cur.buzzWinner = null
         cur.status = 'closed'
+        cur.answerEndsAt = null
       }
       return true
 
@@ -334,6 +379,11 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
         ddPlayer: dailyDouble && findPlayer(s, s.control) ? s.control : null,
         ddWager: null,
         reveal: blurRevealFor(clue.media, clue.value),
+        openedAt: null,
+        buzzOrder: [],
+        attempts: [],
+        photoFinish: null,
+        answerEndsAt: null,
       }
       // A Daily Double is worth the wager, whenever it's answered.
       if (dailyDouble && s.current.reveal) s.current.reveal.shrinkPoints = false
@@ -360,6 +410,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       cur.value = cur.ddWager
       cur.status = 'answering'
       cur.buzzWinner = cur.ddPlayer
+      startAnswerTimer(s, cur, action.now)
       // No buzzers on a Daily Double: the picture sharpens while the player thinks.
       resumeReveal(cur.reveal, action.now)
       return true
@@ -376,8 +427,12 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       if (w?.status !== 'opening' || w.attempt !== action.attempt) return false
       w.status = 'open'
       w.openSeq = action.seq
-      if (w === s.practice) s.practice.openedAt = action.now
-      else resumeReveal(cur!.reveal, action.now)
+      if (w === s.practice) {
+        s.practice.openedAt = action.now
+      } else {
+        cur!.openedAt = action.now
+        resumeReveal(cur!.reveal, action.now)
+      }
       return true
     }
 
@@ -387,10 +442,13 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       if (!w || !findPlayer(s, id) || (w.lockedUntil[id] ?? 0) > action.now) return false
       const practicing = w === s.practice
       if (practicing ? s.practice!.hits.some((h) => h.playerId === id) : !cur || cur.lockedOut.includes(id)) return false
-      const open = w.status === 'open' && w.attempt === action.attempt && w.openSeq !== null && action.seq > w.openSeq
+      const sameOpening = w.attempt === action.attempt && w.openSeq !== null && action.seq > w.openSeq
+      const open = w.status === 'open' && sameOpening
+      const rightTap = s.settings.buzzStyle === 'button' || action.emoji === w.target
+      if (!practicing && cur!.status === 'answering' && sameOpening && rightTap) return runnerUp(cur!, id, action.now)
       if (s.settings.buzzStyle === 'button') {
         if (!open) return falseStart(s, w, id, action.seq, action.now)
-      } else if (!open || action.emoji !== w.target) {
+      } else if (!open || !rightTap) {
         // Emoji pads stun themselves for early or wrong taps; only right taps ever count here.
         return false
       }
@@ -400,6 +458,8 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       }
       cur!.status = 'answering'
       cur!.buzzWinner = id
+      cur!.buzzOrder = [{ playerId: id, ms: buzzMs(cur!, action.now) }]
+      startAnswerTimer(s, cur!, action.now)
       pauseReveal(cur!.reveal, action.now)
       // The sooner the buzz, the blurrier the picture and (with shrinkPoints) the more it's worth.
       if (cur!.reveal) cur!.value = revealValue(cur!.reveal, action.now)
@@ -409,6 +469,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
     case 'closeBuzzers':
       if (cur?.status !== 'open' && cur?.status !== 'opening') return false
       cur.status = 'closed'
+      cur.answerEndsAt = null
       pauseReveal(cur.reveal, action.now)
       return true
 
@@ -416,6 +477,8 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       if (cur?.status !== 'answering' || !cur.buzzWinner) return false
       const player = findPlayer(s, cur.buzzWinner)
       if (!player) return false
+      cur.attempts.push({ playerId: player.id, correct: action.correct, ms: cur.dailyDouble ? null : (cur.buzzOrder[0]?.ms ?? null) })
+      cur.answerEndsAt = null
       if (action.correct) {
         player.score += cur.value
         cur.correctPlayer = player.id
@@ -437,10 +500,12 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       if (!cur || cur.status === 'revealed') return false
       cur.status = 'revealed'
       cur.buzzWinner = null
+      cur.answerEndsAt = null
       return true
 
     case 'returnToBoard':
       if (cur?.status !== 'revealed') return false
+      recordClue(s, cur)
       s.used.push(cur.id)
       s.current = null
       if (isRoundComplete(s)) advanceRound(s)
@@ -449,7 +514,10 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
 
     case 'endRound':
       if (s.phase !== 'board' && s.phase !== 'clue') return false
-      if (cur) s.used.push(cur.id)
+      if (cur) {
+        recordClue(s, cur)
+        s.used.push(cur.id)
+      }
       advanceRound(s)
       return true
 
@@ -524,6 +592,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
 
     case 'endGame':
       if (s.phase === 'lobby' || s.phase === 'game_over') return false
+      if (cur) recordClue(s, cur)
       s.current = null
       s.phase = 'game_over'
       return true

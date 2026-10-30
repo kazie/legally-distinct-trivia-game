@@ -386,6 +386,13 @@ describe('host and players over the bridge', () => {
     host.dispatch({ type: 'judgeFinal', correct: true })
     await flush()
     expect(ann.me.value?.score).toBe(1000)
+
+    host.dispatch({ type: 'endGame' })
+    await flush()
+    const gameOver = ann.state.value?.gameOver
+    expect(gameOver?.ranking).toEqual([{ playerId: ann.playerId, rank: 1, score: 1000 }])
+    expect(gameOver?.awards.map((a) => a.key)).toEqual(['most-correct', 'daily-double', 'final-hero'])
+    expect(host.state.value.history).toHaveLength(1)
   })
 
   it('late joiners and reconnecting clients resync after a bridge restart', async () => {

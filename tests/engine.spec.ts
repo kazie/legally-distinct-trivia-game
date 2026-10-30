@@ -421,7 +421,11 @@ describe('big button', () => {
     const dd = reduce(button(), { type: 'selectClue', ref: { round: 0, category: 0, clue: 1 } })
     expect(press(dd, 'p2', 1)).toBe(dd)
     const answering = press(open(reduce(button(), { type: 'selectClue', ref: B100 }), 10), 'p2', 11)
-    expect(press(answering, 'p3', 12)).toBe(answering)
+    // Right behind the winner: only a photo finish, never a false start.
+    const behind = press(answering, 'p3', 12)
+    expect(behind.current).toMatchObject({ buzzWinner: 'p2', status: 'answering' })
+    expect(behind.players.map((p) => p.score)).toEqual(answering.players.map((p) => p.score))
+    expect(behind.current!.buzzOrder.map((b) => b.playerId)).toEqual(['p2', 'p3'])
   })
 
   it('leaves the emoji pad as it was: early taps never reach the score', () => {
@@ -469,5 +473,80 @@ describe('quick draw', () => {
     expect(s.current?.status).toBe('dd_wager')
     s = run(s, { type: 'setDdWager', id: 'p1', amount: 100 }, { type: 'showDdClue', now: 0 })
     expect(toPublicState(s, 0).current?.text).toBe('a2')
+  })
+})
+
+describe('history, photo finish and answer timer', () => {
+  const select = (s: GameState, ref = B100) => reduce(s, { type: 'selectClue', ref })
+  const tap = (s: GameState, playerId: string, seq: number, now: number) =>
+    reduce(s, { type: 'buzz', playerId, clueId: s.current!.id, attempt: s.current!.attempt, seq, emoji: T, now })
+  const openAt = (s: GameState, seq: number, now: number) => {
+    s = reduce(s, { type: 'openBuzzers', target: T })
+    return reduce(s, { type: 'buzzersOpened', clueId: s.current!.id, attempt: s.current!.attempt, seq, now })
+  }
+
+  it('records each clue with its attempts, buzz times and the scores after it', () => {
+    let s = openAt(select(started()), 10, 1000)
+    s = tap(s, 'p2', 11, 1400)
+    s = reduce(s, { type: 'judge', correct: false })
+    s = openAt(s, 12, 5000)
+    s = tap(s, 'p3', 13, 5250)
+    s = run(s, { type: 'judge', correct: true }, { type: 'returnToBoard' })
+    expect(s.history).toEqual([
+      {
+        clueId: '0-1-0',
+        round: 0,
+        category: 'B',
+        value: 100,
+        dailyDouble: false,
+        attempts: [
+          { playerId: 'p2', correct: false, ms: 400 },
+          { playerId: 'p3', correct: true, ms: 250 },
+        ],
+        photoFinish: null,
+        scoresAfter: { p1: 0, p2: -100, p3: 100 },
+      },
+    ])
+    // A clue cut short by ending the round counts too; a new game starts a new history.
+    s = run(s, { type: 'selectClue', ref: { round: 0, category: 0, clue: 0 } }, { type: 'endRound' })
+    expect(s.history.map((r) => r.clueId)).toEqual(['0-1-0', '0-0-0'])
+    s = run(s, { type: 'resetToLobby' }, { type: 'startGame' })
+    expect(s.history).toEqual([])
+  })
+
+  it('keeps up to two runner-ups behind the winner, and the closest finish on the clue', () => {
+    let s = openAt(select(started({ settings: { buzzStyle: 'button' } })), 10, 0)
+    s = run(s, { type: 'playerJoined', id: 'p4', name: 'Dee', now: 0 })
+    s = tap(s, 'p2', 11, 300)
+    s = tap(s, 'p3', 12, 380)
+    s = tap(s, 'p2', 13, 390)
+    s = tap(s, 'p1', 14, 450)
+    s = tap(s, 'p4', 15, 460)
+    expect(s.current!.buzzOrder).toEqual([
+      { playerId: 'p2', ms: 300 },
+      { playerId: 'p3', ms: 380 },
+      { playerId: 'p1', ms: 450 },
+    ])
+    expect(s.current!.photoFinish).toEqual({ playerIds: ['p2', 'p3'], gapMs: 80 })
+    // A wrong emoji or a press from an earlier opening is no photo finish.
+    s = reduce(s, { type: 'judge', correct: false })
+    s = openAt(s, 20, 1000)
+    s = tap(s, 'p3', 21, 1100)
+    expect(reduce(s, { type: 'buzz', playerId: 'p1', clueId: s.current!.id, attempt: s.current!.attempt - 1, seq: 22, now: 1120 })).toBe(s)
+  })
+
+  it('runs the answer timer while someone answers, Daily Doubles included', () => {
+    let s = openAt(select(started({ settings: { answerTimerMs: 10_000 } })), 10, 0)
+    s = tap(s, 'p2', 11, 2000)
+    expect(s.current!.answerEndsAt).toBe(12_000)
+    s = reduce(s, { type: 'judge', correct: false })
+    expect(s.current!.answerEndsAt).toBeNull()
+    s = tap(openAt(s, 12, 20_000), 'p3', 13, 21_000)
+    expect(reduce(s, { type: 'revealAnswer' }).current!.answerEndsAt).toBeNull()
+
+    let dd = run(started({ settings: { answerTimerMs: 5000 } }), { type: 'selectClue', ref: { round: 0, category: 0, clue: 1 } })
+    dd = run(dd, { type: 'setDdWager', id: 'p1', amount: 100 }, { type: 'showDdClue', now: 100 })
+    expect(dd.current!.answerEndsAt).toBe(5100)
+    expect(run(started(), { type: 'selectClue', ref: B100 }).current!.answerEndsAt).toBeNull()
   })
 })

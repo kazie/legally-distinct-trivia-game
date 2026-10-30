@@ -16,10 +16,13 @@ export interface GameSettings {
   wrongAnswerPenalty: boolean
   /** Phones show pictures and video too (audio always plays there), for players following the TV over a video call. */
   mediaOnPhones: boolean
+  /** Time to answer after buzzing in, shown as a countdown (0 = no timer). The host still judges. */
+  answerTimerMs: number
 }
 
 export const PENALTY_CHOICES = [0, 0.25, 0.5, 1] as const
 export const LOCKOUT_CHOICES = [250, 500, 1000, 2000, 3000] as const
+export const ANSWER_TIMER_CHOICES = [0, 5000, 10_000, 15_000, 30_000] as const
 
 export const DEFAULT_SETTINGS: GameSettings = {
   buzzStyle: 'button',
@@ -29,6 +32,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   emojiOnPhones: false,
   wrongAnswerPenalty: true,
   mediaOnPhones: false,
+  answerTimerMs: 0,
 }
 
 const flag = (value: unknown, fallback: boolean) => (typeof value === 'boolean' ? value : fallback)
@@ -49,6 +53,7 @@ export function normalizeSettings(raw: unknown): GameSettings {
     emojiOnPhones: flag(r.emojiOnPhones, d.emojiOnPhones),
     wrongAnswerPenalty: flag(r.wrongAnswerPenalty, d.wrongAnswerPenalty),
     mediaOnPhones: flag(r.mediaOnPhones, d.mediaOnPhones),
+    answerTimerMs: pick(r.answerTimerMs, ANSWER_TIMER_CHOICES, d.answerTimerMs as (typeof ANSWER_TIMER_CHOICES)[number]),
   }
 }
 
