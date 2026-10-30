@@ -4,7 +4,7 @@
  */
 import sample from '../../boards/sample.json'
 import { BoardSchema } from '@/content/schema'
-import { clueId, createGame, PRACTICE_ID, reduce, type Action } from '@/game/engine'
+import { clueId, createGame, PRACTICE_ID, reduce, TIEBREAK_ID, type Action } from '@/game/engine'
 import type { GameSettings } from '@/game/settings'
 import type { GameState } from '@/game/types'
 
@@ -192,6 +192,11 @@ function gameOver(): GameState {
   return reduce(s, { type: 'endGame' })
 }
 
+/** The host ends the game with Ann and Bob tied for first: they buzz for the tie-breaker, Cid watches. */
+function tiebreak(): GameState {
+  return run(midRound(), [{ type: 'adjustScore', id: BOB, delta: 800 }, { type: 'endGame' }])
+}
+
 function final(): GameState {
   return run(midRound(), [{ type: 'startFinal' }])
 }
@@ -268,6 +273,16 @@ export const scenarios = {
     ]),
   }),
   'Game over': () => ({ state: gameOver() }),
+  'Tie-breaker': () => ({ state: tiebreak() }),
+  'Game over: Bob won the tie-breaker': () => ({
+    state: run(tiebreak(), [
+      { type: 'openBuzzers', target: DEMO_TARGET },
+      { type: 'buzzersOpened', clueId: TIEBREAK_ID, attempt: 1, seq: 1, now: 0 },
+      { type: 'buzz', playerId: BOB, clueId: TIEBREAK_ID, attempt: 1, seq: 2, now: 300 },
+      { type: 'judge', correct: true },
+      { type: 'returnToBoard' },
+    ]),
+  }),
 } satisfies Record<string, () => Scenario>
 
 export type ScenarioName = keyof typeof scenarios

@@ -4,7 +4,8 @@ import { useRouter } from 'vue-router'
 import { allBoards, deleteDraft, downloadJson, loadDrafts, saveDraft, type BoardEntry } from '@/content/boards'
 import MediaCheck from '@/components/MediaCheck.vue'
 import MediaFields from '@/components/MediaFields.vue'
-import SourceFields from '@/components/SourceFields.vue'
+import AnswerFields from '@/components/AnswerFields.vue'
+import SingleClueFields from '@/components/SingleClueFields.vue'
 import { lintBoard } from '@/content/lint'
 import { cluePath, emptyBoard, parseCluePath, validateBoard, type Board, type BoardIssue, type Clue } from '@/content/schema'
 
@@ -205,12 +206,13 @@ function removeRow() {
   selected.value = null
 }
 
-function toggleFinal() {
+/** Adds or removes the final round or the tie-breaker. */
+function toggleExtra(key: 'final' | 'tiebreaker', name: string) {
   if (!draft.value) return
-  if (draft.value.final) {
-    if (confirm('Remove the final round?')) delete draft.value.final
+  if (draft.value[key]) {
+    if (confirm(`Remove the ${name}?`)) delete draft.value[key]
   } else {
-    draft.value.final = { category: '', clue: '', answer: '' }
+    draft.value[key] = { category: '', clue: '', answer: '' }
   }
 }
 
@@ -228,9 +230,10 @@ function goTo(path: string) {
     if (unapplied && !confirm('Discard your unapplied JSON edits?')) return
     showJson.value = false
   }
-  if (path.startsWith('final')) {
+  const single = /^(final|tiebreaker)\b/.exec(path)
+  if (single) {
     selected.value = null
-    return void nextTick(() => document.getElementById('final-panel')?.scrollIntoView({ behavior: 'smooth' }))
+    return void nextTick(() => document.getElementById(`${single[1]}-panel`)?.scrollIntoView({ behavior: 'smooth' }))
   }
   const round = /^rounds\.(\d+)/.exec(path)
   if (round) roundIndex.value = Number(round[1])
@@ -348,8 +351,11 @@ function applyJson() {
             {{ r.name || `Round ${i + 1}` }}
           </button>
           <button class="ghost" @click="addRound">+ Round</button>
-          <button class="ghost" :class="{ primary: !!draft.final }" @click="toggleFinal">
+          <button class="ghost" :class="{ primary: !!draft.final }" @click="toggleExtra('final', 'final round')">
             {{ draft.final ? '− Final round' : '+ Final round' }}
+          </button>
+          <button class="ghost" :class="{ primary: !!draft.tiebreaker }" @click="toggleExtra('tiebreaker', 'tie-breaker')">
+            {{ draft.tiebreaker ? '− Tie-breaker' : '+ Tie-breaker' }}
           </button>
         </div>
 
@@ -413,19 +419,17 @@ function applyJson() {
           <label>Host notes (optional, never shown to players) <input v-model="selectedClue.notes" /></label>
           <MediaFields v-model="selectedClue.media" label="Media" can-reveal />
           <MediaFields v-model="selectedClue.answerMedia" label="Answer media (replaces it on reveal)" />
-          <SourceFields :item="selectedClue" />
+          <AnswerFields :item="selectedClue" />
         </div>
 
-        <div v-if="draft.final" id="final-panel" class="panel stack">
-          <h3>Final round</h3>
-          <label>Category <input v-model="draft.final.category" /></label>
-          <label>Clue <textarea v-model="draft.final.clue" rows="3" /></label>
-          <label>Answer <input v-model="draft.final.answer" /></label>
-          <label>Host notes (optional) <input v-model="draft.final.notes" /></label>
-          <MediaFields v-model="draft.final.media" label="Media" />
-          <MediaFields v-model="draft.final.answerMedia" label="Answer media (shown with the answer)" />
-          <SourceFields :item="draft.final" />
-        </div>
+        <SingleClueFields v-if="draft.final" id="final-panel" :item="draft.final" title="Final round" />
+        <SingleClueFields
+          v-if="draft.tiebreaker"
+          id="tiebreaker-panel"
+          :item="draft.tiebreaker"
+          title="Tie-breaker"
+          hint="Only played when the game ends with first place tied: the tied players buzz for it."
+        />
       </template>
     </section>
   </main>

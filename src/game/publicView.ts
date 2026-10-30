@@ -1,5 +1,5 @@
 import type { Clue, Final } from '@/content/schema'
-import { clueId, ddMaxWager, falseStartsOn } from './engine'
+import { clueId, clueOf, ddMaxWager, falseStartsOn } from './engine'
 import { awards, ranking, streaks } from './stats'
 import type { BuzzWindow, GameState, PublicCurrentClue, PublicFinal, PublicPractice, PublicState } from './types'
 
@@ -43,7 +43,10 @@ export function toPublicState(state: GameState, now: number): PublicState {
     current: publicCurrent(state),
     final: publicFinal(state),
     practice: publicPractice(state),
-    gameOver: state.phase === 'game_over' ? { ranking: ranking(state.players), awards: awards(state) } : null,
+    gameOver:
+      state.phase === 'game_over'
+        ? { ranking: ranking(state.players, state.tiebreak?.winner), awards: awards(state) }
+        : null,
     settings: state.settings,
     hostTime: now,
   }
@@ -67,16 +70,15 @@ function visibleTarget(state: GameState, w: BuzzWindow): number | null {
 
 function publicCurrent(state: GameState): PublicCurrentClue | null {
   const cur = state.current
-  if (!cur || !state.board) return null
-  const category = state.board.rounds[cur.ref.round]?.categories[cur.ref.category]
-  const clue = category?.clues[cur.ref.clue]
-  if (!category || !clue) return null
+  const shown = cur && clueOf(state, cur)
+  if (!cur || !shown) return null
+  const { category, clue } = shown
   // Quick draw: whoever buzzed answers from memory.
   const quickDrawHidden = state.settings.openMode === 'instant' && cur.status === 'answering' && !cur.dailyDouble
   const hidden = cur.status === 'dd_wager' || quickDrawHidden
   return {
     id: cur.id,
-    category: category.name,
+    category,
     status: cur.status,
     dailyDouble: cur.dailyDouble,
     value: cur.value,

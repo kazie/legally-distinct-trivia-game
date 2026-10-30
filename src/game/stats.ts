@@ -33,11 +33,12 @@ export function streaks(history: ClueResult[]): { current: Record<string, number
   return { current, best }
 }
 
-/** Highest score first; tied players share a rank. */
-export function ranking(players: Player[]): RankedPlayer[] {
+/** Highest score first; tied players share a rank, except that the tie-breaker winner beats those tied with them. */
+export function ranking(players: Player[], tiebreakWinner: string | null = null): RankedPlayer[] {
+  const ahead = (a: Player, b: Player) => a.score > b.score || (a.score === b.score && a.id === tiebreakWinner && b.id !== tiebreakWinner)
   return [...players]
-    .sort((a, b) => b.score - a.score)
-    .map((p) => ({ playerId: p.id, rank: 1 + players.filter((o) => o.score > p.score).length, score: p.score }))
+    .sort((a, b) => (ahead(a, b) ? -1 : ahead(b, a) ? 1 : 0))
+    .map((p) => ({ playerId: p.id, rank: 1 + players.filter((o) => ahead(o, p)).length, score: p.score }))
 }
 
 export function playerStats(state: GameState): Record<string, PlayerStats> {
@@ -131,7 +132,7 @@ export function awards(state: GameState): Award[] {
 /** One row per player for the results export, best first. */
 export function resultRows(state: GameState) {
   const stats = playerStats(state)
-  return ranking(state.players).map((r) => {
+  return ranking(state.players, state.tiebreak?.winner).map((r) => {
     const st = stats[r.playerId]!
     return {
       rank: r.rank,

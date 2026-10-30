@@ -167,6 +167,14 @@ export interface GameState {
   falseStarts: LoggedFalseStart[]
   /** Every clue played this game, in order. */
   history: ClueResult[]
+  /** Set once the tie-breaker starts: who was tied for first, and who won it. */
+  tiebreak: Tiebreak | null
+}
+
+export interface Tiebreak {
+  players: string[]
+  /** Null while it's being played, and when nobody got it right (a shared win). */
+  winner: string | null
 }
 
 /* ---------- What gets broadcast to players and the board screen (no unrevealed answers) ---------- */
@@ -264,6 +272,7 @@ export interface RankedPlayer {
 }
 
 export interface GameOver {
+  /** The tie-breaker winner comes first among the players tied with them. */
   ranking: RankedPlayer[]
   awards: Award[]
 }

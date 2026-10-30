@@ -208,6 +208,10 @@ label.check {
   color: var(--warn);
 }
 
+.ok-note {
+  color: var(--ok);
+}
+
 /* A button that looks like a link inside text: jump to a clue from a list of issues. */
 button.link {
   background: none;

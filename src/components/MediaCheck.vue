@@ -71,7 +71,4 @@ onUnmounted(() => runId++)
   color: var(--warn);
   overflow-wrap: anywhere;
 }
-.ok-note {
-  color: var(--ok);
-}
 </style>

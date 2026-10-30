@@ -32,4 +32,14 @@ describe('board schema', () => {
       expect(paths).toContain('rounds.0.categories.0.clues.1.value')
     }
   })
+
+  it('accepts a tie-breaker and accepted answers, but no empty ones', () => {
+    const board = emptyBoard('x')
+    board.rounds[0]!.categories.forEach((c) => c.clues.forEach((clue) => Object.assign(clue, { clue: 'q', answer: 'a' })))
+    board.tiebreaker = { category: 'TB', clue: 'q', answer: 'a', acceptedAnswers: ['b'] }
+    expect(validateBoard(board).ok).toBe(true)
+    board.rounds[0]!.categories[0]!.clues[0]!.acceptedAnswers = [' ']
+    const result = validateBoard(board)
+    expect(result.ok ? [] : result.issues.map((i) => i.path)).toEqual(['rounds.0.categories.0.clues.0.acceptedAnswers.0'])
+  })
 })

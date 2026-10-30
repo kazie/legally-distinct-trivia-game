@@ -5,7 +5,7 @@ import { createMemoryHistory } from 'vue-router'
 import { afterEach, describe, expect, it } from 'vitest'
 import StoryPlayer from '@/dev/StoryPlayer.vue'
 import StoryRoom from '@/dev/StoryRoom.vue'
-import { ANN, BOB, DEMO_AUDIO, DEMO_ROOM, DEMO_TARGET, scenarioNames, type ScenarioName } from '@/dev/scenarios'
+import { ANN, BOB, CID, DEMO_AUDIO, DEMO_ROOM, DEMO_TARGET, scenarioNames, type ScenarioName } from '@/dev/scenarios'
 import { BUZZ_EMOJIS } from '@/game/buzzPad'
 import { DEFAULT_SETTINGS } from '@/game/settings'
 import { createAppRouter } from '@/router'
@@ -193,6 +193,26 @@ describe('story harness renders real screens', () => {
     await w.findAll('button').find((b) => b.text().startsWith('Correct'))!.trigger('click')
     await settle()
     expect(w.find('.pop').text()).toBe('+600')
+  })
+
+  it('plays the tie-breaker for the tied players only, and crowns its winner', async () => {
+    const w = await render('Tie-breaker', () => [
+      h('div', { class: 'tv' }, [h(BoardView, { room: DEMO_ROOM })]),
+      h('div', { class: 'cid' }, [h(StoryPlayer, { playerId: CID })]),
+    ])
+    expect(w.find('.tv .clue-head').text()).toContain('Tie-breaker')
+    expect(w.find('.cid').text()).toContain('TIE-BREAKER')
+    expect(w.find('.cid').text()).toContain('Locked out')
+
+    const over = await render('Game over: Bob won the tie-breaker', () => [h(BoardView, { room: DEMO_ROOM })])
+    expect(over.find('.step.rank-1 .pname').text()).toBe('Bob')
+  })
+
+  it('hints which final responses match the answer', async () => {
+    const w = await render('Final: judging', () => [h(HostView, { room: DEMO_ROOM })], false)
+    const rows = w.findAll('.final-table tbody tr').map((r) => r.text())
+    expect(rows.find((r) => r.includes('Alfred Nobel'))).toContain('✓ matches')
+    expect(rows.find((r) => r.includes('Edison'))).not.toContain('matches')
   })
 
   it('lets the host judge from the control panel', async () => {

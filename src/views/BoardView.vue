@@ -8,6 +8,7 @@ import Scoreboard from '@/components/Scoreboard.vue'
 import SourceLine from '@/components/SourceLine.vue'
 import { BUZZ_EMOJIS, formatSeconds, photoFinishText } from '@/game/buzzPad'
 import { ClientController } from '@/game/clientController'
+import { TIEBREAK_ID } from '@/game/engine'
 import { DEFAULT_SETTINGS, formatLockout } from '@/game/settings'
 import { useWakeLock } from '@/composables/useWakeLock'
 import { ignoreHotkey } from '@/keys'
@@ -187,7 +188,8 @@ onUnmounted(() => {
     <section v-else-if="phase === 'clue' && cur" class="fill clue" :class="{ open: cur.status === 'open' }">
       <div class="clue-head">
         <span>{{ cur.category }}</span>
-        <span class="value">{{ clueValue }}</span>
+        <span v-if="cur.id === TIEBREAK_ID" class="gold">Tie-breaker</span>
+        <span v-else class="value">{{ clueValue }}</span>
       </div>
       <template v-if="cur.status === 'dd_wager'">
         <div class="dd serif">DAILY DOUBLE</div>
