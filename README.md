@@ -220,6 +220,17 @@ an answer (or a key word of it) that appears in its own clue or in its media lin
 answers or clues, and text that may be too long for the TV. The host lobby shows how many a board has. Drop that JSON into `boards/` to keep it in the repo. Drafts
 appear in the host's board picker right away.
 
+### Sharing boards
+
+- **Copy share link** in the editor packs the board into the link itself (JSON, compressed with
+  `deflate-raw`, base64url, after `#board=`). The fragment never reaches a server. Opening the link shows the
+  editor, asks "Import '…' as a draft?" and then removes the board from the address bar. Links over ~30,000
+  characters may get cut by chat apps: the editor warns, and exporting the JSON file is the way then.
+- **Import from URL** loads a board JSON file from an http(s) link, e.g. a raw GitHub or gist link (those
+  allow cross-site reads). No cookies are sent.
+- Files, links and URLs all go through the same import: the board is untrusted, so it's saved as a draft with
+  a fresh id and checked by the schema like any other draft. Imports are capped at 1 MB of JSON.
+
 ## How the networking works
 
 The bridge only relays messages. It stores nothing and has no server-side logic, so **the host's browser tab
