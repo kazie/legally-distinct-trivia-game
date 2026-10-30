@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, shallowRef, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { allBoards, deleteDraft, downloadJson, loadDrafts, saveDraft, type BoardEntry } from '@/content/boards'
 import MediaCheck from '@/components/MediaCheck.vue'
 import MediaFields from '@/components/MediaFields.vue'
 import AnswerFields from '@/components/AnswerFields.vue'
 import SingleClueFields from '@/components/SingleClueFields.vue'
 import { lintBoard } from '@/content/lint'
+import { boardToLink, fetchBoard, linkToBoard, LONG_LINK_CHARS, SHARE_HASH } from '@/content/share'
 import {
   cluePath,
   DEFAULT_ANSWER_SECONDS,
@@ -21,6 +22,7 @@ import {
 
 const props = defineProps<{ boardId?: string }>()
 const router = useRouter()
+const route = useRoute()
 
 const boards = shallowRef<BoardEntry[]>(allBoards())
 const draft = ref<Board | null>(null)
@@ -32,6 +34,8 @@ const showJson = ref(false)
 const jsonText = ref('')
 const jsonError = ref('')
 const importError = ref('')
+/** The share link of the board being edited, shown so it can be copied by hand too (no clipboard on plain http). */
+const shareLink = ref('')
 
 const validation = computed(() => (draft.value ? validateBoard(draft.value) : null))
 const issues = computed(() => (validation.value && !validation.value.ok ? validation.value.issues : []))
@@ -55,6 +59,7 @@ function open(id: string | undefined) {
   // Our own URL update after saving under a new id.
   if (id && id === savedId.value && draft.value) return
   loading = true
+  shareLink.value = ''
   selected.value = null
   roundIndex.value = 0
   showJson.value = false
@@ -95,6 +100,8 @@ watch(
       return
     }
     if (!board || board.id === '') return
+    // An edit makes a copied link out of date.
+    shareLink.value = ''
     saveDraft(board.id, JSON.parse(JSON.stringify(board)), savedId.value ?? undefined)
     if (savedId.value !== board.id) {
       savedId.value = board.id
@@ -135,22 +142,59 @@ function removeDraft() {
   router.push({ name: 'editor' })
 }
 
-async function importFile(event: Event) {
+/**
+ * Every import (file, share link, URL) ends here. The content is untrusted: it's saved as a draft under a fresh
+ * id, the schema checks it like any draft, and Vue escapes all text.
+ */
+function importRaw(raw: unknown) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('This is not a board')
+  const board = normalize(raw)
+  const id = uniqueId(board.id.replace(/[^a-z0-9-]/g, '-').toLowerCase() || 'imported')
+  saveDraft(id, { ...raw, id })
+  refresh()
+  router.push({ name: 'editor', params: { boardId: id } })
+}
+
+/** Runs one import; `load` returns null when the user changed their mind. */
+async function importFrom(label: string, load: () => Promise<unknown>) {
   importError.value = ''
-  const file = (event.target as HTMLInputElement).files?.[0]
-  if (!file) return
   try {
-    const raw = JSON.parse(await file.text())
-    const board = normalize(raw)
-    const id = uniqueId(board.id.replace(/[^a-z0-9-]/g, '-').toLowerCase() || 'imported')
-    saveDraft(id, { ...raw, id })
-    refresh()
-    router.push({ name: 'editor', params: { boardId: id } })
+    const raw = await load()
+    if (raw !== null) importRaw(raw)
   } catch (e) {
-    importError.value = `Could not read ${file.name}: ${(e as Error).message}`
-  } finally {
-    ;(event.target as HTMLInputElement).value = ''
+    importError.value = `Could not import ${label}: ${(e as Error).message}`
   }
+}
+
+async function importFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (file) await importFrom(file.name, async () => JSON.parse(await file.text()))
+  input.value = ''
+}
+
+function importUrl() {
+  const url = prompt('Link to a board JSON file (http or https), e.g. a raw GitHub or gist link')?.trim()
+  if (url) void importFrom(url, () => fetchBoard(url))
+}
+
+/** Opened from a share link: offer to import the board in it, then drop it from the address bar. */
+async function importShared() {
+  const hash = location.hash
+  if (!hash.startsWith(SHARE_HASH)) return
+  await router.replace({ path: route.path })
+  await importFrom('the share link', async () => {
+    const raw = await linkToBoard(hash)
+    const title = (raw as { title?: unknown })?.title
+    return confirm(`Import "${typeof title === 'string' ? title : 'this board'}" as a draft?`) ? raw : null
+  })
+}
+onMounted(importShared)
+
+async function copyShareLink() {
+  if (!draft.value) return
+  shareLink.value = await boardToLink(JSON.parse(JSON.stringify(draft.value)))
+  await navigator.clipboard?.writeText(shareLink.value).catch(() => {})
 }
 
 function exportBoard() {
@@ -304,6 +348,7 @@ function applyJson() {
           Import JSON
           <input type="file" accept="application/json,.json" @change="importFile" />
         </label>
+        <button class="small" @click="importUrl">Import from URL</button>
       </div>
       <p v-if="importError" class="error">{{ importError }}</p>
       <RouterLink
@@ -342,7 +387,18 @@ function applyJson() {
           <button class="small" @click="openJson">Edit JSON</button>
           <button class="small" @click="duplicate">Duplicate</button>
           <button class="small primary" @click="exportBoard">Export JSON</button>
+          <button class="small" @click="copyShareLink">Copy share link</button>
           <button v-if="savedId" class="small bad" @click="removeDraft">Delete draft</button>
+        </div>
+        <div v-if="shareLink" class="stack">
+          <input :value="shareLink" readonly aria-label="Share link" @focus="($event.target as HTMLInputElement).select()" />
+          <p v-if="shareLink.length > LONG_LINK_CHARS" class="warn-note">
+            Copied, but this link is {{ shareLink.length.toLocaleString() }} characters long: chat apps and some browsers
+            cut long links. Export the JSON file instead.
+          </p>
+          <p v-else class="muted">
+            Copied (or copy it from the box). Whoever opens it gets the board as a draft in their editor.
+          </p>
         </div>
         <ul v-if="issues.length" class="issues">
           <li v-for="(issue, i) in issues.slice(0, 8)" :key="i">
