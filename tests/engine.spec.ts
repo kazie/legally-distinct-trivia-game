@@ -115,7 +115,7 @@ describe('engine', () => {
       started({ settings: { wrongAnswerPenalty: false } }),
       { type: 'selectClue', ref: { round: 0, category: 0, clue: 1 } },
       { type: 'setDdWager', id: 'p1', amount: 150 },
-      { type: 'showDdClue' },
+      { type: 'showDdClue', now: 0 },
     )
     s = reduce(s, { type: 'judge', correct: false })
     expect(score(s, 'p1')).toBe(-150)
@@ -188,7 +188,7 @@ describe('engine', () => {
     expect(toPublicState(s, 0).current!.text).toBeNull()
     expect(ddMaxWager(s, 'p1')).toBe(200)
     expect(reduce(s, { type: 'setDdWager', id: 'p2', amount: 100 })).toBe(s)
-    s = run(s, { type: 'setDdWager', id: 'p1', amount: 99999 }, { type: 'showDdClue' })
+    s = run(s, { type: 'setDdWager', id: 'p1', amount: 99999 }, { type: 'showDdClue', now: 0 })
     expect(s.current!.value).toBe(200)
     expect(s.current!.buzzWinner).toBe('p1')
     expect(reduce(s, { type: 'openBuzzers', target: T })).toBe(s)
@@ -390,7 +390,7 @@ describe('big button', () => {
 
   it('ignores presses while closed: they may have been sent while the buzzers were still open', () => {
     let s = open(reduce(button(), { type: 'selectClue', ref: B200 }), 10)
-    s = reduce(s, { type: 'closeBuzzers' })
+    s = reduce(s, { type: 'closeBuzzers', now: 0 })
     expect(press(s, 'p2', 11)).toBe(s)
     s = run(open(s, 20), { type: 'buzz', playerId: 'p1', clueId: s.current!.id, attempt: 2, seq: 21, now: 0 }, { type: 'judge', correct: false })
     expect(s.current?.status).toBe('closed')
@@ -467,7 +467,7 @@ describe('quick draw', () => {
   it('plays Daily Doubles as usual, clue in sight', () => {
     let s = reduce(quick(), { type: 'selectClue', ref: { round: 0, category: 0, clue: 1 }, target: T })
     expect(s.current?.status).toBe('dd_wager')
-    s = run(s, { type: 'setDdWager', id: 'p1', amount: 100 }, { type: 'showDdClue' })
+    s = run(s, { type: 'setDdWager', id: 'p1', amount: 100 }, { type: 'showDdClue', now: 0 })
     expect(toPublicState(s, 0).current?.text).toBe('a2')
   })
 })

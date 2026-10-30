@@ -207,3 +207,13 @@ label.check {
 .warn-note {
   color: var(--warn);
 }
+
+/* A button that looks like a link inside text: jump to a clue from a list of issues. */
+button.link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}

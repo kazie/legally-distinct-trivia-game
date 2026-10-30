@@ -3,6 +3,7 @@ import type { BridgeClient } from '@/net/bridgeClient'
 import { decode, encode, type Message, type OutgoingMessage } from '@/net/protocol'
 import { buzzWindowId, createGame, reduce, type Action } from './engine'
 import { toPublicState } from './publicView'
+import { pauseReveal } from './reveal'
 import { roomTopic } from './roomCode'
 import { LOCKOUT_CHOICES, normalizeSettings } from './settings'
 import type { GameState } from './types'
@@ -28,8 +29,11 @@ export interface HostControllerOptions {
  * Buzzers can't stay opening or open when the host steps back (undo) or reloads: the `buzzers_open` echo
  * already came or never will, and buzzes may have raced it. Close them so the host reopens explicitly.
  */
-function settleBuzzers(s: GameState): GameState {
-  if (s.current?.status === 'opening' || s.current?.status === 'open') s.current.status = 'closed'
+function settleBuzzers(s: GameState, now: number): GameState {
+  if (s.current?.status === 'opening' || s.current?.status === 'open') {
+    s.current.status = 'closed'
+    pauseReveal(s.current.reveal, now)
+  }
   if (s.practice) s.practice.status = 'reading'
   return s
 }
@@ -126,7 +130,7 @@ export class HostController {
     const popped = this.history.pop()
     this.canUndo.value = this.history.length > 0
     if (!popped) return
-    const previous = keepFalseStarts(this.state.value, settleBuzzers(structuredClone(popped)))
+    const previous = keepFalseStarts(this.state.value, settleBuzzers(structuredClone(popped), this.now()))
     // Players remember which attempts they buzzed in, so the next opening must not reuse a number.
     previous.buzzRound = this.state.value.buzzRound
     this.commit(previous)
@@ -239,10 +243,13 @@ export class HostController {
       )
       delete saved.emojiOnPhones
       saved.falseStarts ??= []
-      if (saved.current) saved.current.lockedUntil ??= {}
+      if (saved.current) {
+        saved.current.lockedUntil ??= {}
+        saved.current.reveal ??= null
+      }
       if (saved.practice) saved.practice.lockedUntil ??= {}
       // Buzzes that raced a reload are gone.
-      return settleBuzzers(saved)
+      return settleBuzzers(saved, this.now())
     } catch {
       return null
     }

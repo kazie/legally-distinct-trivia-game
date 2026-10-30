@@ -366,7 +366,7 @@ describe('host and players over the bridge', () => {
     expect(ann.state.value?.current?.ddMaxWager).toBe(1000)
     ann.wager('daily', 700)
     await flush()
-    host.dispatch({ type: 'showDdClue' })
+    host.dispatch({ type: 'showDdClue', now: 0 })
     host.dispatch({ type: 'judge', correct: true })
     host.dispatch({ type: 'returnToBoard' })
     host.dispatch({ type: 'startFinal' })

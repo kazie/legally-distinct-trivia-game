@@ -42,7 +42,7 @@ const QUICK_DRAW: Partial<GameSettings> = { openMode: 'instant' }
 function midRound(b = board, settings: Partial<GameSettings> = {}): GameState {
   const s = run(lobby(true, b), [{ type: 'startGame', settings }])
   // A few clues already played.
-  s.used = ['0-0-0', '0-0-1', '0-1-0', '0-2-0', '0-2-1', '0-3-0', '0-4-0', '0-4-2']
+  s.used = ['0-0-0', '0-0-1', '0-1-0', '0-2-0', '0-3-0', '0-3-1', '0-4-0', '0-4-2']
   s.players[0]!.score = 1400
   s.players[1]!.score = 600
   s.players[2]!.score = -200
@@ -108,6 +108,29 @@ function audioClue(): GameState {
   return run(midRound(audioBoard), [{ type: 'selectClue', ref: AUDIO_CLUE }])
 }
 
+/** Food & Drink, 400: a sushi picture that sharpens while buzzers are open, worth less the longer it runs. */
+const BLUR_CLUE = { round: 0, category: 2, clue: 1 }
+const BLUR_CLUE_ID = '0-2-1'
+
+/** Bob buzzed in after 4 of the picture's 10 seconds: it's still blurry, and worth 320 instead of 400. */
+function blurBuzzed(): GameState {
+  const now = Date.now()
+  return run(midRound(), [
+    { type: 'selectClue', ref: BLUR_CLUE },
+    { type: 'openBuzzers', target: DEMO_TARGET },
+    { type: 'buzzersOpened', clueId: BLUR_CLUE_ID, attempt: 1, seq: 1, now: now - 4000 },
+    { type: 'buzz', playerId: BOB, clueId: BLUR_CLUE_ID, attempt: 1, seq: 2, now },
+  ])
+}
+
+/** Animals, 1000: the answer comes with a picture of a cheetah and a source; phones show pictures too. */
+function answerMedia(): GameState {
+  return run(midRound(board, { mediaOnPhones: true }), [
+    { type: 'selectClue', ref: { round: 0, category: 1, clue: 4 } },
+    { type: 'revealAnswer' },
+  ])
+}
+
 /** The clue, in a game where phones show the emoji to tap too (for players on a video call). */
 function clueEmojiOnPhones(): GameState {
   return clue({ ...EMOJI, emojiOnPhones: true })
@@ -153,6 +176,12 @@ export const scenarios = {
     live: [{ type: 'openBuzzers', target: DEMO_TARGET }],
   }),
   'Clue: audio': () => ({ state: audioClue() }),
+  'Clue: blur reveal, buzzers open': () => ({
+    state: run(midRound(), [{ type: 'selectClue', ref: BLUR_CLUE }]),
+    live: [{ type: 'openBuzzers', target: DEMO_TARGET }],
+  }),
+  'Clue: blur reveal, Bob buzzed early': () => ({ state: blurBuzzed() }),
+  'Clue: answer picture and source': () => ({ state: answerMedia() }),
   'Clue: quick draw, buzzers open': () => ({
     state: midRound(board, QUICK_DRAW),
     live: [{ type: 'selectClue', ref: CLUE, target: DEMO_TARGET }],
@@ -169,7 +198,7 @@ export const scenarios = {
     state: run(midRound(), [
       { type: 'selectClue', ref: { round: 0, category: 1, clue: 3 } },
       { type: 'setDdWager', id: ANN, amount: 1000 },
-      { type: 'showDdClue' },
+      { type: 'showDdClue', now: Date.now() },
     ]),
   }),
   'Round 2': () => ({ state: run(midRound(), [{ type: 'endRound' }]) }),

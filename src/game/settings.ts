@@ -14,6 +14,8 @@ export interface GameSettings {
   emojiOnPhones: boolean
   /** A wrong answer costs the clue's value. Off for kids or casual games; Daily Double and final wagers always count. */
   wrongAnswerPenalty: boolean
+  /** Phones show pictures and video too (audio always plays there), for players following the TV over a video call. */
+  mediaOnPhones: boolean
 }
 
 export const PENALTY_CHOICES = [0, 0.25, 0.5, 1] as const
@@ -26,7 +28,10 @@ export const DEFAULT_SETTINGS: GameSettings = {
   lockoutMs: 1000,
   emojiOnPhones: false,
   wrongAnswerPenalty: true,
+  mediaOnPhones: false,
 }
+
+const flag = (value: unknown, fallback: boolean) => (typeof value === 'boolean' ? value : fallback)
 
 function pick<T>(value: unknown, choices: readonly T[], fallback: T): T {
   return choices.includes(value as T) ? (value as T) : fallback
@@ -41,8 +46,9 @@ export function normalizeSettings(raw: unknown): GameSettings {
     openMode: pick(r.openMode, ['host', 'instant'] as const, d.openMode),
     falseStartPenalty: pick(r.falseStartPenalty, PENALTY_CHOICES, d.falseStartPenalty as (typeof PENALTY_CHOICES)[number]),
     lockoutMs: pick(r.lockoutMs, LOCKOUT_CHOICES, d.lockoutMs as (typeof LOCKOUT_CHOICES)[number]),
-    emojiOnPhones: typeof r.emojiOnPhones === 'boolean' ? r.emojiOnPhones : d.emojiOnPhones,
-    wrongAnswerPenalty: typeof r.wrongAnswerPenalty === 'boolean' ? r.wrongAnswerPenalty : d.wrongAnswerPenalty,
+    emojiOnPhones: flag(r.emojiOnPhones, d.emojiOnPhones),
+    wrongAnswerPenalty: flag(r.wrongAnswerPenalty, d.wrongAnswerPenalty),
+    mediaOnPhones: flag(r.mediaOnPhones, d.mediaOnPhones),
   }
 }
 

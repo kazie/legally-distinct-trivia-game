@@ -6,14 +6,52 @@ export const MediaSrcSchema = z.url({
   error: 'Media must be an http(s) link, e.g. https://example.com/pic.jpg',
 })
 
-export const MediaSchema = z.object({
-  type: z.enum(['image', 'audio', 'video']),
-  src: MediaSrcSchema,
+/** Default length of a blur reveal, in seconds of open buzzers. */
+export const DEFAULT_REVEAL_SECONDS = 15
+
+export const RevealSchema = z.object({
+  /** The picture starts blurred and sharpens while buzzers are open. */
+  style: z.literal('blur'),
+  /** Buzzer-open seconds until the picture is sharp (default 15). */
+  seconds: z.number().min(3).max(120).optional(),
+  /** The earlier someone buzzes in, the more the clue is worth: from the full value down to half. */
+  shrinkPoints: z.boolean().optional(),
 })
+
+export const MediaSchema = z
+  .object({
+    type: z.enum(['image', 'audio', 'video']),
+    src: MediaSrcSchema,
+    /** Audio/video only: play just this part of the file (seconds). */
+    start: z.number().min(0).optional(),
+    end: z.number().positive().optional(),
+    /** Images only. */
+    reveal: RevealSchema.optional(),
+  })
+  .superRefine((media, ctx) => {
+    if (media.type === 'image' && (media.start !== undefined || media.end !== undefined)) {
+      ctx.addIssue({ code: 'custom', path: ['start'], message: 'Only audio and video can have a start and end' })
+    }
+    if (media.end !== undefined && media.end <= (media.start ?? 0)) {
+      ctx.addIssue({ code: 'custom', path: ['end'], message: 'End must be after the start' })
+    }
+    if (media.type !== 'image' && media.reveal) {
+      ctx.addIssue({ code: 'custom', path: ['reveal'], message: 'Only pictures can be revealed bit by bit' })
+    }
+  })
 
 /** Media also arrives over the network, so screens check it again before rendering. */
 export function safeMedia(media: Media | null | undefined): Media | null {
   return media && MediaSrcSchema.safeParse(media.src).success ? media : null
+}
+
+/** Shown with the answer once it's revealed (the host always sees them). */
+const answerExtras = {
+  /** Replaces the clue's media on the TV when the answer is revealed. */
+  answerMedia: MediaSchema.optional(),
+  /** Where the fact comes from, for disputes. */
+  source: z.string().trim().min(1).optional(),
+  sourceUrl: MediaSrcSchema.optional(),
 }
 
 export const ClueSchema = z.object({
@@ -22,6 +60,7 @@ export const ClueSchema = z.object({
   answer: z.string().trim().min(1, 'Answer is required'),
   dailyDouble: z.boolean().optional(),
   media: MediaSchema.optional(),
+  ...answerExtras,
   /** Only ever shown to the host. */
   notes: z.string().optional(),
 })
@@ -66,6 +105,7 @@ export const FinalSchema = z.object({
   clue: z.string().trim().min(1),
   answer: z.string().trim().min(1),
   media: MediaSchema.optional(),
+  ...answerExtras,
   notes: z.string().optional(),
 })
 
@@ -80,6 +120,7 @@ export const BoardSchema = z.object({
 })
 
 export type Media = z.infer<typeof MediaSchema>
+export type Reveal = z.infer<typeof RevealSchema>
 export type Clue = z.infer<typeof ClueSchema>
 export type Category = z.infer<typeof CategorySchema>
 export type Round = z.infer<typeof RoundSchema>

@@ -1,5 +1,6 @@
 import type { Board } from '@/content/schema'
 import { isBuzzTarget } from './buzzPad'
+import { blurRevealFor, pauseReveal, resumeReveal, revealValue } from './reveal'
 import { DEFAULT_SETTINGS, falseStartPoints, normalizeSettings, wrongAnswerPoints, type GameSettings } from './settings'
 import type { BuzzWindow, ClueRef, CurrentClue, FalseStart, GameState, Player } from './types'
 
@@ -17,13 +18,13 @@ export type Action =
   | { type: 'selectClue'; ref: ClueRef; target?: number }
   | { type: 'setDdPlayer'; id: string }
   | { type: 'setDdWager'; id: string; amount: number }
-  | { type: 'showDdClue' }
+  | { type: 'showDdClue'; now: number }
   | { type: 'openBuzzers'; target: number }
   | { type: 'buzzersOpened'; clueId: string; attempt: number; seq: number; now: number }
   | { type: 'buzz'; playerId: string; clueId: string; attempt: number; seq: number; emoji?: number; now: number }
   | { type: 'openPractice'; target: number }
   | { type: 'endIntro' }
-  | { type: 'closeBuzzers' }
+  | { type: 'closeBuzzers'; now: number }
   /** `target`: the emoji to reopen buzzers with right away after a wrong answer in quick draw. */
   | { type: 'judge'; correct: boolean; target?: number }
   | { type: 'revealAnswer' }
@@ -332,7 +333,10 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
         correctPlayer: null,
         ddPlayer: dailyDouble && findPlayer(s, s.control) ? s.control : null,
         ddWager: null,
+        reveal: blurRevealFor(clue.media, clue.value),
       }
+      // A Daily Double is worth the wager, whenever it's answered.
+      if (dailyDouble && s.current.reveal) s.current.reveal.shrinkPoints = false
       // Quick draw: no waiting for the host to read, buzzers open with the clue.
       if (!dailyDouble && s.settings.openMode === 'instant' && action.target !== undefined && isBuzzTarget(action.target)) {
         openWindow(s, s.current, action.target)
@@ -356,6 +360,8 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       cur.value = cur.ddWager
       cur.status = 'answering'
       cur.buzzWinner = cur.ddPlayer
+      // No buzzers on a Daily Double: the picture sharpens while the player thinks.
+      resumeReveal(cur.reveal, action.now)
       return true
 
     case 'openBuzzers':
@@ -371,6 +377,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       w.status = 'open'
       w.openSeq = action.seq
       if (w === s.practice) s.practice.openedAt = action.now
+      else resumeReveal(cur!.reveal, action.now)
       return true
     }
 
@@ -393,12 +400,16 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       }
       cur!.status = 'answering'
       cur!.buzzWinner = id
+      pauseReveal(cur!.reveal, action.now)
+      // The sooner the buzz, the blurrier the picture and (with shrinkPoints) the more it's worth.
+      if (cur!.reveal) cur!.value = revealValue(cur!.reveal, action.now)
       return true
     }
 
     case 'closeBuzzers':
       if (cur?.status !== 'open' && cur?.status !== 'opening') return false
       cur.status = 'closed'
+      pauseReveal(cur.reveal, action.now)
       return true
 
     case 'judge': {

@@ -132,6 +132,35 @@ describe('story harness renders real screens', () => {
     expect(w.find('.phone audio').attributes('src')).toBe(DEMO_AUDIO)
   })
 
+  it('sharpens a blur-reveal picture on the TV while buzzers are open, and keeps pictures off phones by default', async () => {
+    const w = await render('Clue: blur reveal, buzzers open', () => [
+      h('div', { class: 'tv' }, [h(BoardView, { room: DEMO_ROOM })]),
+      h('div', { class: 'phone' }, [h(StoryPlayer, { playerId: ANN })]),
+    ])
+    const blur = () => Number(/blur\(([\d.]+)px\)/.exec(w.find('.tv img').attributes('style') ?? '')?.[1])
+    const before = blur()
+    expect(before).toBeGreaterThan(0)
+    await settle(600)
+    expect(blur()).toBeLessThan(before)
+    expect(w.find('.phone img').exists()).toBe(false)
+
+    const early = await render('Clue: blur reveal, Bob buzzed early', () => [h(BoardView, { room: DEMO_ROOM })])
+    expect(early.find('.clue-head .value').text()).toBe('320')
+  })
+
+  it('shows the answer picture and source on reveal, on phones too when the host allows it', async () => {
+    const w = await render('Clue: answer picture and source', () => [
+      h('div', { class: 'tv' }, [h(BoardView, { room: DEMO_ROOM })]),
+      h('div', { class: 'phone' }, [h(StoryPlayer, { playerId: ANN })]),
+    ])
+    for (const screen of ['.tv', '.phone']) {
+      expect(w.find(`${screen} img`).attributes('src')).toContain('Cheetah4.jpg')
+      const link = w.find(`${screen} .source a`)
+      expect(link.text()).toBe('Wikipedia')
+      expect(link.attributes('rel')).toBe('noopener noreferrer')
+    }
+  })
+
   it('lets the host judge from the control panel', async () => {
     const w = await render('Clue: Bob answering', () => [h(HostView, { room: DEMO_ROOM }), h(StoryPlayer, { playerId: BOB })], false)
     const correct = w.findAll('button').find((b) => b.text().startsWith('Correct'))!

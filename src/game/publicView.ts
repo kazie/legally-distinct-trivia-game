@@ -1,3 +1,4 @@
+import type { Clue, Final } from '@/content/schema'
 import { clueId, ddMaxWager, falseStartsOn } from './engine'
 import type { BuzzWindow, GameState, PublicCurrentClue, PublicFinal, PublicPractice, PublicState } from './types'
 
@@ -44,6 +45,16 @@ export function toPublicState(state: GameState, now: number): PublicState {
   }
 }
 
+/** What only shows with the answer: the answer itself, answer media and the source. */
+function answerExtras(item: Clue | Final, revealed: boolean) {
+  return {
+    answer: revealed ? item.answer : null,
+    answerMedia: revealed ? (item.answerMedia ?? null) : null,
+    source: revealed ? (item.source ?? null) : null,
+    sourceUrl: revealed ? (item.sourceUrl ?? null) : null,
+  }
+}
+
 /** Players only learn which emoji to tap once buzzers are opening, so nobody can tap early. No emoji for the big button. */
 function visibleTarget(state: GameState, w: BuzzWindow): number | null {
   if (state.settings.buzzStyle !== 'emoji') return null
@@ -69,7 +80,8 @@ function publicCurrent(state: GameState): PublicCurrentClue | null {
     target: visibleTarget(state, cur),
     text: hidden ? null : clue.clue,
     media: hidden ? null : (clue.media ?? null),
-    answer: cur.status === 'revealed' ? clue.answer : null,
+    reveal: cur.status === 'revealed' ? null : cur.reveal,
+    ...answerExtras(clue, cur.status === 'revealed'),
     buzzWinner: cur.buzzWinner,
     lockedOut: cur.lockedOut,
     correctPlayer: cur.correctPlayer,
@@ -102,6 +114,7 @@ function publicFinal(state: GameState): PublicFinal | null {
   return {
     category: final.category,
     clue: showClue ? final.clue : null,
+    media: showClue ? (final.media ?? null) : null,
     eligible: f.eligible,
     wagered: Object.keys(f.wagers),
     answered: Object.keys(f.answers),
@@ -115,6 +128,6 @@ function publicFinal(state: GameState): PublicFinal | null {
         }
       : null,
     results: f.results,
-    answer: (state.phase === 'final_judging' && judgingDone) || state.phase === 'game_over' ? final.answer : null,
+    ...answerExtras(final, (state.phase === 'final_judging' && judgingDone) || state.phase === 'game_over'),
   }
 }

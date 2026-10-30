@@ -47,7 +47,7 @@ The bridge URL defaults to `ws://<page host>:8080/ws`. To use another one, set `
 3. **Clue:** the host reads it, then presses **Open buzzers** (Space), and players race to buzz from their
    phones. The first buzz wins, and that player's name goes up on the board screen and on every phone. Audio
    clues also get a player on every phone, so remote players can hear them properly. Pictures and video are
-   only on the board screen.
+   only on the board screen, unless the host turns on **media on phones**.
 4. **Judge:** **Correct** (C) adds the value and hands over control. **Incorrect** (X) subtracts it, locks
    that player out of this clue, and lets the host reopen buzzers for everyone else. **Reveal** (R) shows
    the answer when nobody gets it. **Enter** goes back to the board. **Z** undoes the last host action.
@@ -80,7 +80,10 @@ Set in the lobby; the host's browser remembers them for next time.
     comes back and buzzers reopen for everyone else. Daily Doubles play as usual.
 - **Lockout** (0.25–3 s, default 1 s): how long a false start or a wrong emoji blocks a player.
 
-Also in the lobby: **Wrong answers cost points** (on by default). Turn it off for kids or casual games: a wrong
+Also in the lobby: **Media on phones** (off by default) shows pictures and video on the phones as well as the TV,
+including answer media, for players following over a video call. Audio always plays on phones.
+
+**Wrong answers cost points** (on by default). Turn it off for kids or casual games: a wrong
 answer then only locks the player out of that clue. Wagers still count either way (a wrong Daily Double or
 final answer loses the wager), and false starts follow their own setting above.
 
@@ -127,10 +130,42 @@ Boards are JSON files in [`boards/`](boards). They're validated against a Zod sc
 Rules: every category in a round has the same number of clues, values go up, and each clue has clue text and
 an answer.
 
+### Media, reveals and sources
+
+Clues and the final can have extras (all optional):
+
+```jsonc
+{
+  "value": 400,
+  "clue": "The country where this dish originated",
+  "answer": "Japan",
+  // Audio and video can play just a part of the file: "start": 30, "end": 45 (seconds).
+  "media": {
+    "type": "image",
+    "src": "https://example.com/dish.jpg",
+    // Starts blurred and sharpens while buzzers are open (paused while someone answers).
+    // shrinkPoints: buzzing early is worth more, from the full value down to half once it's sharp.
+    "reveal": { "style": "blur", "seconds": 10, "shrinkPoints": true }
+  },
+  "answerMedia": { "type": "image", "src": "https://example.com/map.jpg" },  // replaces the media on reveal
+  "source": "Wikipedia",                                                        // shown with the answer
+  "sourceUrl": "https://en.wikipedia.org/wiki/Sushi"
+}
+```
+
+On a Daily Double the picture sharpens from when the clue shows, and the wager never shrinks. The host always
+sees the source and what media is coming next to the answer, for disputes. Answer media and sources only
+reach the board screen and phones once the answer is revealed.
+
+When a board is loaded, the host lobby loads every picture, sound and video once and shows "Media: 12/12 OK"
+or the links that don't load. The board screen usually runs in the same browser as the host, so this also
+puts the pictures in its cache. (Media isn't sent to the board screen early: the game state goes to every
+phone, and links can give answers away.) The editor has the same check behind a **Check media** button.
+
 You can also use the in-app **editor** (`/editor`). It autosaves drafts in your browser's localStorage, shows
 validation problems inline, and exports JSON. It also lists **heads-ups** that don't stop a board from being played:
-an answer (or a key word of it) that appears in its own clue, duplicate answers or clues, and text that may be
-too long for the TV. The host lobby shows how many a board has. Drop that JSON into `boards/` to keep it in the repo. Drafts
+an answer (or a key word of it) that appears in its own clue or in its media link (`mars.jpg`), duplicate
+answers or clues, and text that may be too long for the TV. The host lobby shows how many a board has. Drop that JSON into `boards/` to keep it in the repo. Drafts
 appear in the host's board picker right away.
 
 ## How the networking works

@@ -3,6 +3,7 @@ import type { BridgeClient, ConnectionStatus } from '@/net/bridgeClient'
 import { decode, encode, type OutgoingMessage } from '@/net/protocol'
 import { PRACTICE_ID } from './engine'
 import type { KeyValueStorage } from './hostController'
+import { liveClueValue, revealProgress } from './reveal'
 import { roomTopic } from './roomCode'
 import { DEFAULT_SETTINGS } from './settings'
 import type { PracticeHit, PublicCurrentClue, PublicState } from './types'
@@ -64,6 +65,20 @@ export class ClientController {
   readonly me = computed(() => this.state.value?.players.find((p) => p.id === this.playerId) ?? null)
   readonly buzzWinnerName = computed(() => this.nameOf(this.state.value?.current?.buzzWinner ?? null))
   readonly settings = computed(() => this.state.value?.settings ?? DEFAULT_SETTINGS)
+  /** The host's clock, as far as this device can tell. */
+  readonly hostClock = computed(() => this.clock.value + this.clockOffset.value)
+
+  /** How sharp a blur-reveal picture on the clue is right now (0–1), or null when there's none. */
+  readonly revealProgress = computed(() => {
+    const reveal = this.state.value?.current?.reveal
+    return reveal ? revealProgress(reveal, this.hostClock.value) : null
+  })
+
+  /** What the clue is worth right now: it drops while a shrinking blur reveal sharpens. */
+  readonly clueValue = computed(() => {
+    const cur = this.state.value?.current
+    return cur ? liveClueValue(cur, this.hostClock.value) : 0
+  })
 
   readonly buzzable = computed((): Buzzable | null => {
     const state = this.state.value
@@ -213,7 +228,7 @@ export class ClientController {
   /** Milliseconds left until a host-clock deadline. */
   remainingMs(hostDeadline: number | null): number | null {
     if (hostDeadline === null) return null
-    return Math.max(0, hostDeadline - (this.clock.value + this.clockOffset.value))
+    return Math.max(0, hostDeadline - this.hostClock.value)
   }
 
   private stun() {
