@@ -101,6 +101,26 @@ describe('engine', () => {
     expect(reduce(s, { type: 'selectClue', ref: { round: 0, category: 1, clue: 0 } })).toBe(s)
   })
 
+  it('can let wrong answers cost nothing', () => {
+    let s = run(started({ settings: { wrongAnswerPenalty: false } }), { type: 'selectClue', ref: { round: 0, category: 1, clue: 0 } })
+    s = open(s, 10)
+    s = run(s, { type: 'buzz', playerId: 'p2', clueId: '0-1-0', attempt: 1, seq: 11, emoji: T, now: 0 }, { type: 'judge', correct: false })
+    expect(score(s, 'p2')).toBe(0)
+    expect(s.current!.lockedOut).toEqual(['p2'])
+    expect(normalizeSettings({ wrongAnswerPenalty: 'no' }).wrongAnswerPenalty).toBe(true)
+  })
+
+  it('still takes a wrong Daily Double wager when wrong answers cost nothing', () => {
+    let s = run(
+      started({ settings: { wrongAnswerPenalty: false } }),
+      { type: 'selectClue', ref: { round: 0, category: 0, clue: 1 } },
+      { type: 'setDdWager', id: 'p1', amount: 150 },
+      { type: 'showDdClue' },
+    )
+    s = reduce(s, { type: 'judge', correct: false })
+    expect(score(s, 'p1')).toBe(-150)
+  })
+
   it('reveals automatically when everyone has answered wrong', () => {
     let s = run(started(), { type: 'selectClue', ref: { round: 0, category: 1, clue: 0 } })
     for (const [i, id] of ['p1', 'p2', 'p3'].entries()) {

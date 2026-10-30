@@ -10,6 +10,9 @@
   --panel-2: #18246a;
   --ok: #2fbf71;
   --bad: #e5484d;
+  /* Red and amber for text on the dark panels: problems and heads-ups. */
+  --bad-text: #ff8c8f;
+  --warn: #ffc861;
   --accent: #36a3ff;
   --radius: 10px;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -199,4 +202,8 @@ label.check {
 .pill.gold {
   background: var(--gold);
   color: #1a1400;
+}
+
+.warn-note {
+  color: var(--warn);
 }

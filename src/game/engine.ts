@@ -1,6 +1,6 @@
 import type { Board } from '@/content/schema'
 import { isBuzzTarget } from './buzzPad'
-import { DEFAULT_SETTINGS, falseStartPoints, normalizeSettings, type GameSettings } from './settings'
+import { DEFAULT_SETTINGS, falseStartPoints, normalizeSettings, wrongAnswerPoints, type GameSettings } from './settings'
 import type { BuzzWindow, ClueRef, CurrentClue, FalseStart, GameState, Player } from './types'
 
 export type Action =
@@ -411,7 +411,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
         cur.status = 'revealed'
         s.control = player.id
       } else {
-        player.score -= cur.value
+        player.score -= wrongAnswerPoints(s.settings, cur.value, cur.dailyDouble)
         cur.lockedOut.push(player.id)
         cur.buzzWinner = null
         const anyoneLeft = s.players.some((p) => !cur.lockedOut.includes(p.id))

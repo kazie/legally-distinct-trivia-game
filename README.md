@@ -80,6 +80,18 @@ Set in the lobby; the host's browser remembers them for next time.
     comes back and buzzers reopen for everyone else. Daily Doubles play as usual.
 - **Lockout** (0.25–3 s, default 1 s): how long a false start or a wrong emoji blocks a player.
 
+Also in the lobby: **Wrong answers cost points** (on by default). Turn it off for kids or casual games: a wrong
+answer then only locks the player out of that clue. Wagers still count either way (a wrong Daily Double or
+final answer loses the wager), and false starts follow their own setting above.
+
+### Screens stay awake
+
+The host, the board screen and the phones keep the display on while LDTG is open (if the browser refuses at
+first, the next tap or key press tries again: some browsers need a gesture first). The Wake Lock API only works
+over HTTPS, and LDTG usually runs on plain `http://` on the LAN, so it falls back to a tiny silent looping video
+(`src/assets/keep-awake.*`, no audio track) that restarts if something pauses it. The board screen also has a
+fullscreen button (or press **F**).
+
 ## Writing boards
 
 Boards are JSON files in [`boards/`](boards). They're validated against a Zod schema
@@ -116,7 +128,9 @@ Rules: every category in a round has the same number of clues, values go up, and
 an answer.
 
 You can also use the in-app **editor** (`/editor`). It autosaves drafts in your browser's localStorage, shows
-validation problems inline, and exports JSON. Drop that JSON into `boards/` to keep it in the repo. Drafts
+validation problems inline, and exports JSON. It also lists **heads-ups** that don't stop a board from being played:
+an answer (or a key word of it) that appears in its own clue, duplicate answers or clues, and text that may be
+too long for the TV. The host lobby shows how many a board has. Drop that JSON into `boards/` to keep it in the repo. Drafts
 appear in the host's board picker right away.
 
 ## How the networking works

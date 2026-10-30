@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { allBoards, deleteDraft, downloadJson, loadDrafts, saveDraft, type BoardEntry } from '@/content/boards'
-import { emptyBoard, validateBoard, type Board, type Clue } from '@/content/schema'
+import { lintBoard } from '@/content/lint'
+import { cluePath, emptyBoard, parseCluePath, validateBoard, type Board, type BoardIssue, type Clue } from '@/content/schema'
 
 const props = defineProps<{ boardId?: string }>()
 const router = useRouter()
@@ -20,6 +21,8 @@ const importError = ref('')
 
 const validation = computed(() => (draft.value ? validateBoard(draft.value) : null))
 const issues = computed(() => (validation.value && !validation.value.ok ? validation.value.issues : []))
+// Heads-ups only for boards that validate: fix the problems first.
+const warnings = computed(() => (validation.value?.ok ? lintBoard(validation.value.board) : []))
 const round = computed(() => draft.value?.rounds[roundIndex.value] ?? null)
 const selectedClue = computed<Clue | null>(() => {
   const s = selected.value
@@ -213,9 +216,28 @@ function setMedia(clue: Clue, type: string) {
   else clue.media = { type: type as 'image' | 'audio' | 'video', src: clue.media?.src ?? '' }
 }
 
-function cellIssue(c: number, i: number) {
-  const prefix = `rounds.${roundIndex.value}.categories.${c}.clues.${i}`
-  return issues.value.some((issue) => issue.path.startsWith(prefix))
+/** Clue paths (in any round) with a problem or a heads-up, so each grid cell is one lookup. */
+const cluePaths = (list: BoardIssue[]) =>
+  new Set(list.map((issue) => parseCluePath(issue.path)).filter((p) => !!p).map((p) => cluePath(p.round, p.category, p.clue)))
+const badCells = computed(() => cluePaths(issues.value))
+const warnCells = computed(() => cluePaths(warnings.value))
+const cellKey = (c: number, i: number) => cluePath(roundIndex.value, c, i)
+
+/** Jumps to the clue a validation issue or heads-up is about. */
+function goTo(issue: BoardIssue) {
+  if (showJson.value) {
+    const unapplied = jsonText.value !== JSON.stringify(draft.value, null, 2)
+    if (unapplied && !confirm('Discard your unapplied JSON edits?')) return
+    showJson.value = false
+  }
+  if (issue.path.startsWith('final')) {
+    selected.value = null
+    return void nextTick(() => document.getElementById('final-panel')?.scrollIntoView({ behavior: 'smooth' }))
+  }
+  const round = /^rounds\.(\d+)/.exec(issue.path)
+  if (round) roundIndex.value = Number(round[1])
+  const clue = parseCluePath(issue.path)
+  selected.value = clue && { category: clue.category, clue: clue.clue }
 }
 
 function openJson() {
@@ -292,10 +314,19 @@ function applyJson() {
         </div>
         <ul v-if="issues.length" class="issues">
           <li v-for="(issue, i) in issues.slice(0, 8)" :key="i">
-            <code>{{ issue.path || 'board' }}</code> {{ issue.message }}
+            <button v-if="issue.path" class="link" @click="goTo(issue)"><code>{{ issue.path }}</code></button>
+            <code v-else>board</code> {{ issue.message }}
           </li>
           <li v-if="issues.length > 8" class="muted">…and {{ issues.length - 8 }} more</li>
         </ul>
+        <details v-if="warnings.length" class="warnings">
+          <summary>⚠ {{ warnings.length }} heads-up(s): giveaways, duplicates, long text</summary>
+          <ul class="issues">
+            <li v-for="(w, i) in warnings" :key="i">
+              <button class="link" @click="goTo(w)"><code>{{ w.path }}</code></button> {{ w.message }}
+            </li>
+          </ul>
+        </details>
       </div>
 
       <div v-if="showJson" class="panel stack">
@@ -350,7 +381,8 @@ function applyJson() {
                 class="cell"
                 :class="{
                   active: selected?.category === c && selected?.clue === i - 1,
-                  bad: cellIssue(c, i - 1),
+                  bad: badCells.has(cellKey(c, i - 1)),
+                  warn: warnCells.has(cellKey(c, i - 1)),
                   dd: category.clues[i - 1]?.dailyDouble,
                 }"
                 @click="selected = { category: c, clue: i - 1 }"
@@ -364,7 +396,7 @@ function applyJson() {
             <button class="small" @click="addCategory">+ Category</button>
             <button class="small" @click="addRow">+ Row</button>
             <button class="small" :disabled="rows <= 1" @click="removeRow">− Row</button>
-            <span class="muted">Gold border = Daily Double · red = has problems</span>
+            <span class="muted">Gold border = Daily Double · red = has problems · amber = heads-up</span>
           </div>
         </div>
 
@@ -397,7 +429,7 @@ function applyJson() {
           </div>
         </div>
 
-        <div v-if="draft.final" class="panel stack">
+        <div v-if="draft.final" id="final-panel" class="panel stack">
           <h3>Final round</h3>
           <label>Category <input v-model="draft.final.category" /></label>
           <label>Clue <textarea v-model="draft.final.clue" rows="3" /></label>
@@ -499,8 +531,27 @@ function applyJson() {
 .cell.dd {
   box-shadow: inset 0 0 0 3px var(--gold);
 }
+.cell.warn .value {
+  color: var(--warn);
+}
+/* After .warn, so a problem wins over a heads-up. */
 .cell.bad .value {
-  color: #ff8c8f;
+  color: var(--bad-text);
+}
+.warnings summary {
+  cursor: pointer;
+  color: var(--warn);
+}
+.warnings .issues {
+  color: var(--warn);
+}
+button.link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
 }
 .preview {
   font-size: 0.72em;
