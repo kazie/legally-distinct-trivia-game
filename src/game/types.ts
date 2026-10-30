@@ -1,4 +1,5 @@
 import type { Board, Media } from '@/content/schema'
+import type { BlurReveal } from './reveal'
 import type { GameSettings } from './settings'
 
 export interface Player {
@@ -70,6 +71,8 @@ export interface CurrentClue extends BuzzWindow {
   correctPlayer: string | null
   ddPlayer: string | null
   ddWager: number | null
+  /** A picture clue that sharpens while buzzers are open, or null. */
+  reveal: BlurReveal | null
 }
 
 export interface FinalState {
@@ -141,8 +144,13 @@ export interface PublicCurrentClue {
   /** Hidden while a Daily Double wager is pending, and while someone answers in quick draw. */
   text: string | null
   media: Media | null
+  /** Blur progress inputs while the picture is still sharpening; null once revealed or for other clues. */
+  reveal: BlurReveal | null
   /** Only present once revealed. */
   answer: string | null
+  answerMedia: Media | null
+  source: string | null
+  sourceUrl: string | null
   buzzWinner: string | null
   lockedOut: string[]
   correctPlayer: string | null
@@ -155,6 +163,8 @@ export interface PublicCurrentClue {
 export interface PublicFinal {
   category: string
   clue: string | null
+  /** Shown with the clue. */
+  media: Media | null
   eligible: string[]
   wagered: string[]
   answered: string[]
@@ -166,7 +176,11 @@ export interface PublicFinal {
     result: boolean | null
   } | null
   results: Record<string, boolean>
+  /** Only present once revealed, like the answer extras. */
   answer: string | null
+  answerMedia: Media | null
+  source: string | null
+  sourceUrl: string | null
 }
 
 export interface PublicPractice {

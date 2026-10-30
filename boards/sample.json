@@ -12,7 +12,9 @@
             {
               "value": 200,
               "clue": "The planet known as the Red Planet",
-              "answer": "Mars"
+              "answer": "Mars",
+              "source": "NASA",
+              "sourceUrl": "https://science.nasa.gov/mars/"
             },
             {
               "value": 400,
@@ -63,7 +65,13 @@
             {
               "value": 1000,
               "clue": "The fastest land animal",
-              "answer": "Cheetah"
+              "answer": "Cheetah",
+              "answerMedia": {
+                "type": "image",
+                "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Cheetah4.jpg/960px-Cheetah4.jpg"
+              },
+              "source": "Wikipedia",
+              "sourceUrl": "https://en.wikipedia.org/wiki/Cheetah"
             }
           ]
         },
@@ -78,7 +86,16 @@
             {
               "value": 400,
               "clue": "The country where sushi originated",
-              "answer": "Japan"
+              "answer": "Japan",
+              "media": {
+                "type": "image",
+                "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Sushi_platter.jpg/960px-Sushi_platter.jpg",
+                "reveal": {
+                  "style": "blur",
+                  "seconds": 10,
+                  "shrinkPoints": true
+                }
+              }
             },
             {
               "value": 600,
@@ -320,6 +337,8 @@
   "final": {
     "category": "Inventions",
     "clue": "This Swedish chemist invented dynamite and left his fortune to fund a set of famous prizes",
-    "answer": "Alfred Nobel"
+    "answer": "Alfred Nobel",
+    "source": "The Nobel Prize",
+    "sourceUrl": "https://www.nobelprize.org/alfred-nobel/"
   }
 }

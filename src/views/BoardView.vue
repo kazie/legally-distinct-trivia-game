@@ -5,6 +5,7 @@ import ClueText from '@/components/ClueText.vue'
 import ConnectionBadge from '@/components/ConnectionBadge.vue'
 import JoinQr from '@/components/JoinQr.vue'
 import Scoreboard from '@/components/Scoreboard.vue'
+import SourceLine from '@/components/SourceLine.vue'
 import { BUZZ_EMOJIS, formatSeconds } from '@/game/buzzPad'
 import { ClientController } from '@/game/clientController'
 import { DEFAULT_SETTINGS, formatLockout } from '@/game/settings'
@@ -16,7 +17,7 @@ import { beep } from '@/sound'
 const props = defineProps<{ room: string }>()
 
 const client = new ClientController({ bridge: useBridge(), roomCode: props.room, role: 'board' })
-const { state, connection, hostOnline, buzzWinnerName } = client
+const { state, connection, hostOnline, buzzWinnerName, revealProgress, clueValue } = client
 
 const joinUrl = computed(() => `${location.origin}/play/${props.room}`)
 const onLocalhost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
@@ -176,14 +177,20 @@ onUnmounted(() => {
     <section v-else-if="phase === 'clue' && cur" class="fill clue" :class="{ open: cur.status === 'open' }">
       <div class="clue-head">
         <span>{{ cur.category }}</span>
-        <span class="value">{{ cur.value }}</span>
+        <span class="value">{{ clueValue }}</span>
       </div>
       <template v-if="cur.status === 'dd_wager'">
         <div class="dd serif">DAILY DOUBLE</div>
         <p class="sub">{{ client.nameOf(cur.ddPlayer) ?? 'Who' }} is wagering…</p>
       </template>
       <template v-else>
-        <ClueText v-if="cur.text !== null" class="clue-text" :text="cur.text" :media="cur.media" />
+        <ClueText
+          v-if="cur.text !== null"
+          class="clue-text"
+          :text="cur.text"
+          :media="cur.answerMedia ?? cur.media"
+          :progress="cur.answerMedia ? null : revealProgress"
+        />
         <div v-else class="hidden-clue">🙈 Clue hidden — answer from memory!</div>
         <div v-if="cur.status === 'answering'" class="banner">
           {{ buzzWinnerName }}
@@ -197,6 +204,7 @@ onUnmounted(() => {
         <div v-else-if="cur.status === 'revealed'" class="answer">
           <span class="serif gold">{{ cur.answer }}</span>
           <small v-if="cur.correctPlayer">{{ client.nameOf(cur.correctPlayer) }} +{{ cur.value }}</small>
+          <SourceLine :source="cur.source" :url="cur.sourceUrl" />
         </div>
         <div v-if="cur.lockedOut.length && cur.status !== 'revealed'" class="muted locked">
           Wrong: {{ cur.lockedOut.map((id) => client.nameOf(id)).join(', ') }}
@@ -216,17 +224,20 @@ onUnmounted(() => {
         <p class="sub">Place your wagers! {{ final.wagered.length }} / {{ final.eligible.length }}</p>
       </template>
       <template v-else-if="phase === 'final_answer'">
-        <ClueText class="clue-text" :text="final.clue ?? ''" />
+        <ClueText class="clue-text" :text="final.clue ?? ''" :media="final.media" />
         <div v-if="finalRemaining !== null" class="value timer">{{ Math.ceil(finalRemaining / 1000) }}</div>
         <p class="sub">{{ final.answered.length }} / {{ final.eligible.length }} answered</p>
       </template>
       <template v-else-if="phase === 'final_judging'">
-        <ClueText class="clue-text small-clue" :text="final.clue ?? ''" />
+        <ClueText class="clue-text small-clue" :text="final.clue ?? ''" :media="final.answerMedia ?? final.media" />
         <div v-if="final.judging" class="banner">
           {{ client.nameOf(final.judging.playerId) }}
           <small v-if="final.judging.response !== null">“{{ final.judging.response || '—' }}” · wagered {{ final.judging.wager }}</small>
         </div>
-        <div v-else-if="final.answer" class="answer"><span class="serif gold">{{ final.answer }}</span></div>
+        <div v-else-if="final.answer" class="answer">
+          <span class="serif gold">{{ final.answer }}</span>
+          <SourceLine :source="final.source" :url="final.sourceUrl" />
+        </div>
       </template>
     </section>
 
@@ -393,7 +404,8 @@ onUnmounted(() => {
   font-size: 3em;
   text-transform: uppercase;
 }
-.answer small {
+.answer small,
+.answer .source {
   font-size: 0.4em;
   text-transform: none;
 }

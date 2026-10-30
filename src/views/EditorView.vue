@@ -2,6 +2,9 @@
 import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { allBoards, deleteDraft, downloadJson, loadDrafts, saveDraft, type BoardEntry } from '@/content/boards'
+import MediaCheck from '@/components/MediaCheck.vue'
+import MediaFields from '@/components/MediaFields.vue'
+import SourceFields from '@/components/SourceFields.vue'
 import { lintBoard } from '@/content/lint'
 import { cluePath, emptyBoard, parseCluePath, validateBoard, type Board, type BoardIssue, type Clue } from '@/content/schema'
 
@@ -211,11 +214,6 @@ function toggleFinal() {
   }
 }
 
-function setMedia(clue: Clue, type: string) {
-  if (!type) delete clue.media
-  else clue.media = { type: type as 'image' | 'audio' | 'video', src: clue.media?.src ?? '' }
-}
-
 /** Clue paths (in any round) with a problem or a heads-up, so each grid cell is one lookup. */
 const cluePaths = (list: BoardIssue[]) =>
   new Set(list.map((issue) => parseCluePath(issue.path)).filter((p) => !!p).map((p) => cluePath(p.round, p.category, p.clue)))
@@ -223,20 +221,20 @@ const badCells = computed(() => cluePaths(issues.value))
 const warnCells = computed(() => cluePaths(warnings.value))
 const cellKey = (c: number, i: number) => cluePath(roundIndex.value, c, i)
 
-/** Jumps to the clue a validation issue or heads-up is about. */
-function goTo(issue: BoardIssue) {
+/** Jumps to the clue an issue path (validation, heads-up, media check) is about. */
+function goTo(path: string) {
   if (showJson.value) {
     const unapplied = jsonText.value !== JSON.stringify(draft.value, null, 2)
     if (unapplied && !confirm('Discard your unapplied JSON edits?')) return
     showJson.value = false
   }
-  if (issue.path.startsWith('final')) {
+  if (path.startsWith('final')) {
     selected.value = null
     return void nextTick(() => document.getElementById('final-panel')?.scrollIntoView({ behavior: 'smooth' }))
   }
-  const round = /^rounds\.(\d+)/.exec(issue.path)
+  const round = /^rounds\.(\d+)/.exec(path)
   if (round) roundIndex.value = Number(round[1])
-  const clue = parseCluePath(issue.path)
+  const clue = parseCluePath(path)
   selected.value = clue && { category: clue.category, clue: clue.clue }
 }
 
@@ -314,16 +312,17 @@ function applyJson() {
         </div>
         <ul v-if="issues.length" class="issues">
           <li v-for="(issue, i) in issues.slice(0, 8)" :key="i">
-            <button v-if="issue.path" class="link" @click="goTo(issue)"><code>{{ issue.path }}</code></button>
+            <button v-if="issue.path" class="link" @click="goTo(issue.path)"><code>{{ issue.path }}</code></button>
             <code v-else>board</code> {{ issue.message }}
           </li>
           <li v-if="issues.length > 8" class="muted">…and {{ issues.length - 8 }} more</li>
         </ul>
+        <MediaCheck v-if="validation?.ok" :board="validation.board" @select="goTo" />
         <details v-if="warnings.length" class="warnings">
           <summary>⚠ {{ warnings.length }} heads-up(s): giveaways, duplicates, long text</summary>
           <ul class="issues">
             <li v-for="(w, i) in warnings" :key="i">
-              <button class="link" @click="goTo(w)"><code>{{ w.path }}</code></button> {{ w.message }}
+              <button class="link" @click="goTo(w.path)"><code>{{ w.path }}</code></button> {{ w.message }}
             </li>
           </ul>
         </details>
@@ -412,21 +411,9 @@ function applyJson() {
           <label>Clue (shown to everyone) <textarea v-model="selectedClue.clue" rows="3" /></label>
           <label>Answer (host only until revealed) <input v-model="selectedClue.answer" /></label>
           <label>Host notes (optional, never shown to players) <input v-model="selectedClue.notes" /></label>
-          <div class="row">
-            <label>
-              Media
-              <select :value="selectedClue.media?.type ?? ''" @change="setMedia(selectedClue, ($event.target as HTMLSelectElement).value)">
-                <option value="">None</option>
-                <option value="image">Image</option>
-                <option value="audio">Audio</option>
-                <option value="video">Video</option>
-              </select>
-            </label>
-            <label v-if="selectedClue.media" class="grow">
-              URL (direct link to the file, e.g. https://example.com/pic.jpg)
-              <input v-model="selectedClue.media.src" />
-            </label>
-          </div>
+          <MediaFields v-model="selectedClue.media" label="Media" can-reveal />
+          <MediaFields v-model="selectedClue.answerMedia" label="Answer media (replaces it on reveal)" />
+          <SourceFields :item="selectedClue" />
         </div>
 
         <div v-if="draft.final" id="final-panel" class="panel stack">
@@ -434,6 +421,10 @@ function applyJson() {
           <label>Category <input v-model="draft.final.category" /></label>
           <label>Clue <textarea v-model="draft.final.clue" rows="3" /></label>
           <label>Answer <input v-model="draft.final.answer" /></label>
+          <label>Host notes (optional) <input v-model="draft.final.notes" /></label>
+          <MediaFields v-model="draft.final.media" label="Media" />
+          <MediaFields v-model="draft.final.answerMedia" label="Answer media (shown with the answer)" />
+          <SourceFields :item="draft.final" />
         </div>
       </template>
     </section>
@@ -544,14 +535,6 @@ function applyJson() {
 }
 .warnings .issues {
   color: var(--warn);
-}
-button.link {
-  background: none;
-  border: 0;
-  padding: 0;
-  color: inherit;
-  cursor: pointer;
-  text-decoration: underline dotted;
 }
 .preview {
   font-size: 0.72em;

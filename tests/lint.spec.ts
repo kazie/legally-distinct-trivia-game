@@ -4,7 +4,7 @@ import { lintBoard } from '@/content/lint'
 import { normalizeAnswer, significantWords } from '@/content/normalize'
 import { BoardSchema, type Board } from '@/content/schema'
 
-function board(clues: Pick<Board['rounds'][0]['categories'][0]['clues'][0], 'clue' | 'answer' | 'media'>[], extra: Partial<Board> = {}): Board {
+function board(clues: Pick<Board['rounds'][0]['categories'][0]['clues'][0], 'clue' | 'answer' | 'media' | 'answerMedia'>[], extra: Partial<Board> = {}): Board {
   return {
     id: 'lint',
     title: 'Lint',
@@ -79,6 +79,21 @@ describe('lintBoard', () => {
     expect(lintBoard(board([song('one'), song('two')]))).toEqual([])
     expect(lintBoard(board([song('one'), { ...song('two'), media: song('one').media }])).map((w) => w.message)).toEqual([
       'Same clue as rounds.0.categories.0.clues.0',
+    ])
+  })
+
+  it('flags media links that give the answer away, but not answer media', () => {
+    const pic = (src: string) => ({ type: 'image' as const, src })
+    const messages = lintBoard(
+      board([
+        { clue: 'The red planet', answer: 'Mars', media: pic('https://e.x/img/OSIRIS_Mars_true_color.jpg') },
+        { clue: 'This Paris landmark', answer: 'Eiffel Tower', media: pic('https://e.x/Eiffel%20Tower.jpg') },
+        { clue: 'This dish', answer: 'Japan', media: pic('https://e.x/sushi.jpg'), answerMedia: pic('https://e.x/japan.jpg') },
+      ]),
+    ).map((w) => `${w.path}: ${w.message}`)
+    expect(messages).toEqual([
+      'rounds.0.categories.0.clues.0.media.src: The media link gives away the answer',
+      'rounds.0.categories.0.clues.1.media.src: The media link gives away the answer',
     ])
   })
 

@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import BoardGrid from '@/components/BoardGrid.vue'
+import ClueExtras from '@/components/ClueExtras.vue'
 import ConnectionBadge from '@/components/ConnectionBadge.vue'
 import JoinQr from '@/components/JoinQr.vue'
+import MediaCheck from '@/components/MediaCheck.vue'
 import { BUZZ_EMOJIS, formatSeconds, pickBuzzTarget } from '@/game/buzzPad'
 import { allBoards, type BoardEntry } from '@/content/boards'
 import { lintBoard } from '@/content/lint'
 import { ddMaxWager, pickDailyDoubles, type Action } from '@/game/engine'
 import { HostController } from '@/game/hostController'
+import { liveClueValue } from '@/game/reveal'
 import { toPublicState } from '@/game/publicView'
 import { formatLockout, LOCKOUT_CHOICES, normalizeSettings, PENALTY_CHOICES, wrongAnswerPoints, type GameSettings } from '@/game/settings'
 import { useWakeLock } from '@/composables/useWakeLock'
@@ -209,6 +212,7 @@ onUnmounted(() => {
               <div v-if="headsUps" class="warn-note">
                 ⚠ {{ headsUps }} heads-up(s) in this board (giveaways, duplicates or long text): see the editor.
               </div>
+              <MediaCheck :board="board" auto />
             </div>
             <p class="muted">Players join at <a :href="joinUrl" target="_blank">{{ joinUrl }}</a> with code <strong>{{ room }}</strong>.</p>
             <label class="check">
@@ -266,6 +270,10 @@ onUnmounted(() => {
             <label class="check">
               <input v-model="settings.wrongAnswerPenalty" type="checkbox" />
               Wrong answers cost points (turn off for kids or casual games)
+            </label>
+            <label class="check">
+              <input v-model="settings.mediaOnPhones" type="checkbox" />
+              Show pictures and video on phones too (audio always plays there)
             </label>
             <button class="primary" :disabled="!board" @click="startGame">
               Start game with {{ game.players.length }} player(s)
@@ -329,7 +337,7 @@ onUnmounted(() => {
       <div v-else-if="game.phase === 'clue' && cur && clue" class="panel stack clue-panel">
         <div class="row">
           <span class="pill">{{ categoryName }}</span>
-          <span class="value">{{ cur.value }}</span>
+          <span class="value">{{ liveClueValue(cur, clock) }}</span>
           <span v-if="cur.dailyDouble" class="pill gold">Daily Double</span>
           <span class="spacer" />
           <span class="muted">Status: {{ cur.status.replace('_', ' ') }}</span>
@@ -339,6 +347,7 @@ onUnmounted(() => {
           <span class="muted">Answer</span>
           <strong class="gold serif">{{ clue.answer }}</strong>
           <span v-if="clue.notes" class="muted">Note: {{ clue.notes }}</span>
+          <ClueExtras :item="clue" />
         </div>
 
         <!-- Daily Double wager -->
@@ -357,7 +366,7 @@ onUnmounted(() => {
             <input v-model.number="wagerInput" type="number" min="0" class="narrow" placeholder="Set wager" />
             <button class="small" @click="setHostWager('daily', cur.ddPlayer, wagerInput)">Set</button>
           </div>
-          <button class="primary" :disabled="cur.ddWager === null" @click="act({ type: 'showDdClue' })">Show clue</button>
+          <button class="primary" :disabled="cur.ddWager === null" @click="act({ type: 'showDdClue', now: Date.now() })">Show clue</button>
         </div>
 
         <div v-else-if="cur.status === 'reading' || cur.status === 'closed'" class="row">
@@ -376,7 +385,7 @@ onUnmounted(() => {
             {{ BUZZ_EMOJIS[cur.target] }}
           </span>
           <span class="spacer" />
-          <button @click="act({ type: 'closeBuzzers' })">Close buzzers</button>
+          <button @click="act({ type: 'closeBuzzers', now: Date.now() })">Close buzzers</button>
           <button @click="act({ type: 'revealAnswer' })">Time's up – reveal <kbd>R</kbd></button>
         </div>
 
@@ -413,6 +422,8 @@ onUnmounted(() => {
         <div class="answer">
           <span class="muted">Answer</span>
           <strong class="gold serif">{{ board.final.answer }}</strong>
+          <span v-if="board.final.notes" class="muted">Note: {{ board.final.notes }}</span>
+          <ClueExtras :item="board.final" />
         </div>
 
         <table class="final-table">

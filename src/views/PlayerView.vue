@@ -3,8 +3,10 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import BuzzButton from '@/components/BuzzButton.vue'
 import BuzzPad, { type BuzzPadMode } from '@/components/BuzzPad.vue'
 import ConnectionBadge from '@/components/ConnectionBadge.vue'
+import MediaView from '@/components/MediaView.vue'
 import Scoreboard from '@/components/Scoreboard.vue'
-import { safeMedia } from '@/content/schema'
+import SourceLine from '@/components/SourceLine.vue'
+import type { Media } from '@/content/schema'
 import { formatSeconds } from '@/game/buzzPad'
 import { ClientController } from '@/game/clientController'
 import { falseStartPoints, formatLockout } from '@/game/settings'
@@ -31,6 +33,8 @@ const {
   buzzWinnerName,
   practiceHit,
   phoneTarget,
+  revealProgress,
+  clueValue,
 } = client
 
 const nameInput = ref(joinedName.value ?? local?.getItem(LAST_NAME_KEY) ?? '')
@@ -54,11 +58,15 @@ const quickDraw = computed(() => settings.value.openMode === 'instant')
 const clueHidden = computed(() => cur.value?.status === 'answering' && !cur.value.dailyDouble && cur.value.text === null)
 /** Points a false start on this clue costs, for the waiting hint. */
 const falseStartCost = computed(() => (cur.value && phase.value === 'clue' ? falseStartPoints(settings.value, cur.value.value) : 0))
-/** Audio plays on every phone too: sound shared over a video call is often missing or poor. Pictures stay on the TV. */
-const audioSrc = computed(() => {
-  const media = safeMedia(cur.value?.media)
-  return media?.type === 'audio' ? media.src : null
-})
+/**
+ * Audio plays on every phone too: sound shared over a video call is often missing or poor. Pictures and video
+ * stay on the TV unless the host turned on media on phones. Answer media replaces the clue's once revealed.
+ */
+function phoneMedia(media: Media | null | undefined): Media | null {
+  return media && (media.type === 'audio' || settings.value.mediaOnPhones) ? media : null
+}
+const clueMedia = computed(() => phoneMedia(cur.value?.answerMedia ?? cur.value?.media))
+const finalMedia = computed(() => phoneMedia(final.value?.answerMedia ?? final.value?.media))
 /** The target strip above the pad, when phones show the emoji too. */
 const padTarget = computed(() => (emojiOnPhones.value ? phoneTarget.value : undefined))
 
@@ -242,10 +250,17 @@ onUnmounted(() => {
       <template v-else-if="phase === 'clue' && cur">
         <div class="panel center">
           <div class="muted">{{ cur.category }}</div>
-          <div class="value clue-value">{{ cur.dailyDouble ? 'DAILY DOUBLE' : cur.value }}</div>
+          <div class="value clue-value">{{ cur.dailyDouble ? 'DAILY DOUBLE' : clueValue }}</div>
           <p v-if="cur.text" class="clue-text serif">{{ cur.text }}</p>
           <p v-else-if="clueHidden" class="muted">🙈 Clue hidden — answer from memory!</p>
-          <audio v-if="audioSrc" :key="cur.id" :src="audioSrc" controls preload="none" class="clue-audio" />
+          <MediaView
+            v-if="clueMedia"
+            :key="clueMedia.src"
+            :media="clueMedia"
+            :progress="cur.answerMedia ? null : revealProgress"
+            preload="none"
+            class="phone-media"
+          />
         </div>
 
         <div v-if="cur.status === 'dd_wager'" class="panel stack center">
@@ -287,6 +302,7 @@ onUnmounted(() => {
           <div class="muted">Answer</div>
           <p class="big gold serif">{{ cur.answer }}</p>
           <p v-if="cur.correctPlayer">{{ isMe(cur.correctPlayer) ? 'You got it!' : `${client.nameOf(cur.correctPlayer)} got it` }}</p>
+          <SourceLine :source="cur.source" :url="cur.sourceUrl" />
         </div>
       </template>
 
@@ -316,6 +332,7 @@ onUnmounted(() => {
       <div v-else-if="phase === 'final_answer' && final" class="panel stack center">
         <div class="muted">{{ final.category }}</div>
         <p class="clue-text serif">{{ final.clue }}</p>
+        <MediaView v-if="finalMedia" :media="finalMedia" preload="none" class="phone-media" />
         <div v-if="finalRemaining !== null" class="value timer">{{ Math.ceil(finalRemaining / 1000) }}</div>
         <form v-if="eligibleForFinal" class="stack" @submit.prevent="sendAnswer">
           <textarea v-model="finalText" rows="2" maxlength="200" placeholder="Your answer" />
@@ -335,6 +352,8 @@ onUnmounted(() => {
         <template v-else-if="final.answer">
           <div class="muted">Correct answer</div>
           <p class="big gold serif">{{ final.answer }}</p>
+          <MediaView v-if="finalMedia" :media="finalMedia" preload="none" class="phone-media" />
+          <SourceLine :source="final.source" :url="final.sourceUrl" />
         </template>
       </div>
 
@@ -391,9 +410,13 @@ onUnmounted(() => {
 .timer {
   font-size: 2.4rem;
 }
-.clue-audio {
+.phone-media {
   width: 100%;
   margin-top: 0.6rem;
+}
+.phone-media :deep(.media) {
+  max-width: 100%;
+  margin: 0 auto;
 }
 .answering {
   display: grid;

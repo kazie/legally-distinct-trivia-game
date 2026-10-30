@@ -1,16 +1,13 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { safeMedia as checkMedia, type Media } from '@/content/schema'
+import type { Media } from '@/content/schema'
+import MediaView from './MediaView.vue'
 
-const props = defineProps<{ text: string; media?: Media | null }>()
-const safeMedia = computed(() => checkMedia(props.media))
+defineProps<{ text: string; media?: Media | null; progress?: number | null }>()
 </script>
 
 <template>
   <div class="clue serif">
-    <img v-if="safeMedia?.type === 'image'" :src="safeMedia.src" alt="" class="media" />
-    <audio v-else-if="safeMedia?.type === 'audio'" :src="safeMedia.src" controls class="media" />
-    <video v-else-if="safeMedia?.type === 'video'" :src="safeMedia.src" controls class="media" />
+    <MediaView :media="media" :progress="progress" />
     <div>{{ text }}</div>
   </div>
 </template>
@@ -24,10 +21,5 @@ const safeMedia = computed(() => checkMedia(props.media))
   display: grid;
   gap: 0.6em;
   justify-items: center;
-}
-.media {
-  max-width: min(100%, 640px);
-  max-height: 40vh;
-  border-radius: 8px;
 }
 </style>
