@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { DEFAULT_REVEAL_SECONDS, safeMedia, type Clue, type Final, type Media } from '@/content/schema'
 import SourceLine from './SourceLine.vue'
 
-/** Host-only details next to the answer: what media plays, what shows on reveal, and the source for disputes. */
+/** Host-only details next to the answer: other accepted answers, the media, and the source for disputes. */
 const props = defineProps<{ item: Clue | Final }>()
 
 const KIND = { image: 'picture', audio: 'audio', video: 'video' } as const
@@ -23,6 +23,7 @@ const answerMedia = computed(() => safeMedia(props.item.answerMedia))
 </script>
 
 <template>
+  <span v-if="item.acceptedAnswers?.length" class="muted">Also accept: {{ item.acceptedAnswers.join(' · ') }}</span>
   <span v-if="media" class="muted">
     Clue: <a :href="media.src" target="_blank" rel="noopener noreferrer">{{ describe(media) }}</a>
   </span>

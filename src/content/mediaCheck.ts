@@ -23,6 +23,7 @@ export function collectMedia(board: Board): MediaItem[] {
     ),
   )
   if (board.final) add('final', 'Final round', board.final)
+  if (board.tiebreaker) add('tiebreaker', 'Tie-breaker', board.tiebreaker)
   return items
 }
 

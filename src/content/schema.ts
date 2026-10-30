@@ -45,13 +45,15 @@ export function safeMedia(media: Media | null | undefined): Media | null {
   return media && MediaSrcSchema.safeParse(media.src).success ? media : null
 }
 
-/** Shown with the answer once it's revealed (the host always sees them). */
+/** Extras that go with the answer. The host always sees them; players get media and source once it's revealed. */
 const answerExtras = {
   /** Replaces the clue's media on the TV when the answer is revealed. */
   answerMedia: MediaSchema.optional(),
   /** Where the fact comes from, for disputes. */
   source: z.string().trim().min(1).optional(),
   sourceUrl: MediaSrcSchema.optional(),
+  /** Other answers to count as right, e.g. "Armstrong" for "Neil Armstrong". Only the host sees them. */
+  acceptedAnswers: z.array(z.string().trim().min(1)).optional(),
 }
 
 export const ClueSchema = z.object({
@@ -100,6 +102,7 @@ export const RoundSchema = z
     })
   })
 
+/** A clue on its own, outside the grid: the final round and the tie-breaker. */
 export const FinalSchema = z.object({
   category: z.string().trim().min(1),
   clue: z.string().trim().min(1),
@@ -117,6 +120,8 @@ export const BoardSchema = z.object({
   title: z.string().trim().min(1),
   rounds: z.array(RoundSchema).min(1, 'A board needs at least one round'),
   final: FinalSchema.optional(),
+  /** Played only when the game ends with first place tied: a buzzer clue for the tied players. */
+  tiebreaker: FinalSchema.optional(),
 })
 
 export type Media = z.infer<typeof MediaSchema>

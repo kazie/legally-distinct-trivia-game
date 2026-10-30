@@ -1,4 +1,4 @@
-import type { Board } from '@/content/schema'
+import type { Board, Clue, Final, Media } from '@/content/schema'
 import { isBuzzTarget } from './buzzPad'
 import { blurRevealFor, pauseReveal, resumeReveal, revealValue } from './reveal'
 import { DEFAULT_SETTINGS, falseStartPoints, normalizeSettings, wrongAnswerPoints, type GameSettings } from './settings'
@@ -46,6 +46,8 @@ export const MAX_NAME_LENGTH = 24
 export const MAX_FINAL_ANSWER_LENGTH = 200
 /** The clue id practice buzzes use in `buzzers_open` and `buzz` messages. */
 export const PRACTICE_ID = 'practice'
+/** The id of the tie-breaker clue, which isn't on the board. */
+export const TIEBREAK_ID = 'tiebreak'
 
 export function clueId(ref: ClueRef): string {
   return `${ref.round}-${ref.category}-${ref.clue}`
@@ -68,6 +70,7 @@ export function createGame(roomCode: string): GameState {
     settings: { ...DEFAULT_SETTINGS },
     falseStarts: [],
     history: [],
+    tiebreak: null,
   }
 }
 
@@ -123,12 +126,47 @@ function lowestScorer(players: Player[]): string | null {
   return players.reduce((low, p) => (p.score < low.score ? p : low)).id
 }
 
+/** The category and clue on screen: a cell of the board, or the tie-breaker. */
+export function clueOf(state: GameState, cur: CurrentClue): { category: string; clue: Clue | Final } | null {
+  const board = state.board
+  if (cur.id === TIEBREAK_ID) return board?.tiebreaker ? { category: board.tiebreaker.category, clue: board.tiebreaker } : null
+  const category = board?.rounds[cur.ref.round]?.categories[cur.ref.category]
+  const clue = category?.clues[cur.ref.clue]
+  return category && clue ? { category: category.name, clue } : null
+}
+
+/** A clue that just went up, waiting for the host to read it. */
+function newClue(ref: ClueRef, id: string, value: number, media: Media | undefined): CurrentClue {
+  return {
+    ref,
+    id,
+    status: 'reading',
+    dailyDouble: false,
+    value,
+    attempt: 0,
+    openSeq: null,
+    target: null,
+    lockedUntil: {},
+    buzzWinner: null,
+    lockedOut: [],
+    correctPlayer: null,
+    ddPlayer: null,
+    ddWager: null,
+    reveal: blurRevealFor(media, value),
+    openedAt: null,
+    buzzOrder: [],
+    attempts: [],
+    photoFinish: null,
+    answerEndsAt: null,
+  }
+}
+
 /** Files the clue on screen into the game's history, for stats and the results export. */
 function recordClue(s: GameState, cur: CurrentClue) {
   s.history.push({
     clueId: cur.id,
     round: cur.ref.round,
-    category: s.board?.rounds[cur.ref.round]?.categories[cur.ref.category]?.name ?? '',
+    category: clueOf(s, cur)?.category ?? '',
     value: cur.value,
     dailyDouble: cur.dailyDouble,
     attempts: cur.attempts,
@@ -173,8 +211,27 @@ function advanceRound(s: GameState) {
   } else if (s.board?.final) {
     startFinal(s)
   } else {
-    s.phase = 'game_over'
+    finishGame(s)
   }
+}
+
+/**
+ * Ends the game, unless first place is tied (with points) and the board has a tie-breaker that hasn't been
+ * played: then the tied players buzz for it (everyone else is locked out) and the game ends after it.
+ */
+function finishGame(s: GameState) {
+  s.current = null
+  const top = Math.max(...s.players.map((p) => p.score))
+  const tied = s.players.filter((p) => p.score === top).map((p) => p.id)
+  const tiebreaker = s.board?.tiebreaker
+  if (tiebreaker && !s.tiebreak && tied.length > 1 && top > 0) {
+    s.tiebreak = { players: tied, winner: null }
+    s.phase = 'clue'
+    s.current = newClue({ round: s.round, category: -1, clue: -1 }, TIEBREAK_ID, 0, tiebreaker.media)
+    s.current.lockedOut = s.players.filter((p) => !tied.includes(p.id)).map((p) => p.id)
+    return
+  }
+  s.phase = 'game_over'
 }
 
 function startFinal(s: GameState) {
@@ -265,6 +322,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       s.settings = normalizeSettings(action.settings)
       s.falseStarts = []
       s.history = []
+      s.tiebreak = null
       s.round = 0
       s.used = []
       s.current = null
@@ -299,6 +357,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       s.practice = null
       s.falseStarts = []
       s.history = []
+      s.tiebreak = null
       s.players.forEach((p) => (p.score = 0))
       return true
 
@@ -363,30 +422,14 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       if (!clue || s.used.includes(id)) return false
       const dailyDouble = s.dailyDoubles.includes(id)
       s.phase = 'clue'
-      s.current = {
-        ref,
-        id,
-        status: dailyDouble ? 'dd_wager' : 'reading',
-        dailyDouble,
-        value: clue.value,
-        attempt: 0,
-        openSeq: null,
-        target: null,
-        lockedUntil: {},
-        buzzWinner: null,
-        lockedOut: [],
-        correctPlayer: null,
-        ddPlayer: dailyDouble && findPlayer(s, s.control) ? s.control : null,
-        ddWager: null,
-        reveal: blurRevealFor(clue.media, clue.value),
-        openedAt: null,
-        buzzOrder: [],
-        attempts: [],
-        photoFinish: null,
-        answerEndsAt: null,
+      s.current = newClue(ref, id, clue.value, clue.media)
+      if (dailyDouble) {
+        s.current.status = 'dd_wager'
+        s.current.dailyDouble = true
+        s.current.ddPlayer = findPlayer(s, s.control) ? s.control : null
+        // A Daily Double is worth the wager, whenever it's answered.
+        if (s.current.reveal) s.current.reveal.shrinkPoints = false
       }
-      // A Daily Double is worth the wager, whenever it's answered.
-      if (dailyDouble && s.current.reveal) s.current.reveal.shrinkPoints = false
       // Quick draw: no waiting for the host to read, buzzers open with the clue.
       if (!dailyDouble && s.settings.openMode === 'instant' && action.target !== undefined && isBuzzTarget(action.target)) {
         openWindow(s, s.current, action.target)
@@ -482,6 +525,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       if (action.correct) {
         player.score += cur.value
         cur.correctPlayer = player.id
+        if (cur.id === TIEBREAK_ID) s.tiebreak!.winner = player.id
         cur.status = 'revealed'
         s.control = player.id
       } else {
@@ -506,6 +550,11 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
     case 'returnToBoard':
       if (cur?.status !== 'revealed') return false
       recordClue(s, cur)
+      if (cur.id === TIEBREAK_ID) {
+        s.current = null
+        s.phase = 'game_over'
+        return true
+      }
       s.used.push(cur.id)
       s.current = null
       if (isRoundComplete(s)) advanceRound(s)
@@ -513,7 +562,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       return true
 
     case 'endRound':
-      if (s.phase !== 'board' && s.phase !== 'clue') return false
+      if ((s.phase !== 'board' && s.phase !== 'clue') || s.tiebreak) return false
       if (cur) {
         recordClue(s, cur)
         s.used.push(cur.id)
@@ -522,7 +571,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       return true
 
     case 'startFinal':
-      if (!s.board?.final || s.phase === 'lobby' || s.phase.startsWith('final') || s.phase === 'game_over') return false
+      if (!s.board?.final || s.tiebreak || s.phase === 'lobby' || s.phase.startsWith('final') || s.phase === 'game_over') return false
       startFinal(s)
       return true
 
@@ -593,8 +642,8 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
     case 'endGame':
       if (s.phase === 'lobby' || s.phase === 'game_over') return false
       if (cur) recordClue(s, cur)
-      s.current = null
-      s.phase = 'game_over'
+      // Ending during the tie-breaker skips the rest of it: a shared win.
+      finishGame(s)
       return true
   }
 }

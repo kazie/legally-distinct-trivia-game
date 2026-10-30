@@ -8,7 +8,8 @@ import MediaCheck from '@/components/MediaCheck.vue'
 import { BUZZ_EMOJIS, formatSeconds, photoFinishText, pickBuzzTarget } from '@/game/buzzPad'
 import { allBoards, downloadCsv, downloadJson, type BoardEntry } from '@/content/boards'
 import { lintBoard } from '@/content/lint'
-import { ddMaxWager, pickDailyDoubles, type Action } from '@/game/engine'
+import { clueOf, ddMaxWager, pickDailyDoubles, TIEBREAK_ID, type Action } from '@/game/engine'
+import { allAnswers, matchAnswer, type AnswerMatch } from '@/game/fuzzy'
 import { HostController } from '@/game/hostController'
 import { liveClueValue } from '@/game/reveal'
 import { toPublicState } from '@/game/publicView'
@@ -62,13 +63,13 @@ const boardUrl = `${location.origin}/board/${props.room}`
 const cur = computed(() => game.value.current)
 const final = computed(() => game.value.final)
 const board = computed(() => game.value.board)
-const clue = computed(() => {
-  const c = cur.value
-  return c ? board.value?.rounds[c.ref.round]?.categories[c.ref.category]?.clues[c.ref.clue] : undefined
-})
-const categoryName = computed(() => {
-  const c = cur.value
-  return c ? board.value?.rounds[c.ref.round]?.categories[c.ref.category]?.name : undefined
+const shown = computed(() => (cur.value ? clueOf(game.value, cur.value) : null))
+const clue = computed(() => shown.value?.clue)
+const categoryName = computed(() => shown.value?.category)
+/** Hints for judging final responses, by player: matches an accepted answer, or close to one. */
+const finalMatches = computed((): Record<string, AnswerMatch> => {
+  const answers = board.value?.final ? allAnswers(board.value.final) : []
+  return Object.fromEntries(Object.entries(final.value?.answers ?? {}).map(([id, text]) => [id, matchAnswer(text, answers)]))
 })
 const wrongCost = computed(() => (cur.value ? wrongAnswerPoints(game.value.settings, cur.value.value, cur.value.dailyDouble) : 0))
 const nameOf = (id: string | null | undefined) => game.value.players.find((p) => p.id === id)?.name ?? '—'
@@ -359,7 +360,8 @@ onUnmounted(() => {
       <div v-else-if="game.phase === 'clue' && cur && clue" class="panel stack clue-panel">
         <div class="row">
           <span class="pill">{{ categoryName }}</span>
-          <span class="value">{{ liveClueValue(cur, clock) }}</span>
+          <span v-if="cur.id === TIEBREAK_ID" class="pill gold">Tie-breaker</span>
+          <span v-else class="value">{{ liveClueValue(cur, clock) }}</span>
           <span v-if="cur.dailyDouble" class="pill gold">Daily Double</span>
           <span class="spacer" />
           <span class="muted">Status: {{ cur.status.replace('_', ' ') }}</span>
@@ -461,7 +463,11 @@ onUnmounted(() => {
               <td>{{ nameOf(id) }}</td>
               <td>{{ game.players.find((p) => p.id === id)?.score }}</td>
               <td>{{ final.wagers[id] ?? '—' }}</td>
-              <td>{{ final.answers[id] ?? '—' }}</td>
+              <td>
+                {{ final.answers[id] ?? '—' }}
+                <span v-if="finalMatches[id] === 'exact'" class="match ok-note" title="Matches an accepted answer">✓ matches</span>
+                <span v-else-if="finalMatches[id] === 'close'" class="match warn-note" title="Close to an accepted answer">≈ close</span>
+              </td>
               <td>{{ final.results[id] === undefined ? '' : final.results[id] ? '✔' : '✘' }}</td>
             </tr>
           </tbody>
@@ -708,6 +714,11 @@ kbd {
 .awards {
   margin: 0;
   padding-left: 1.2em;
+}
+.match {
+  font-size: 0.85em;
+  margin-left: 0.4em;
+  white-space: nowrap;
 }
 .final-table {
   width: 100%;

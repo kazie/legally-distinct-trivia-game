@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Board } from '@/content/schema'
-import { clueId, createGame, ddMaxWager, pickDailyDoubles, PRACTICE_ID, reduce, type Action } from '@/game/engine'
+import { clueId, createGame, ddMaxWager, pickDailyDoubles, PRACTICE_ID, reduce, TIEBREAK_ID, type Action } from '@/game/engine'
 import { BUZZ_EMOJIS, pickBuzzTarget } from '@/game/buzzPad'
 import { toPublicState } from '@/game/publicView'
 import { DEFAULT_SETTINGS, normalizeSettings, type GameSettings } from '@/game/settings'
@@ -548,5 +548,57 @@ describe('history, photo finish and answer timer', () => {
     dd = run(dd, { type: 'setDdWager', id: 'p1', amount: 100 }, { type: 'showDdClue', now: 100 })
     expect(dd.current!.answerEndsAt).toBe(5100)
     expect(run(started(), { type: 'selectClue', ref: B100 }).current!.answerEndsAt).toBeNull()
+  })
+})
+
+describe('tie-breaker', () => {
+  const tied = () => {
+    const s = started()
+    s.board = { ...board, final: undefined, tiebreaker: { category: 'TB', clue: 'tb clue', answer: 'TB' } }
+    return run(s, { type: 'adjustScore', id: 'p1', delta: 300 }, { type: 'adjustScore', id: 'p2', delta: 300 }, { type: 'adjustScore', id: 'p3', delta: 100 })
+  }
+  const openAndBuzz = (s: GameState, playerId: string) => {
+    s = reduce(s, { type: 'openBuzzers', target: T })
+    s = reduce(s, { type: 'buzzersOpened', clueId: TIEBREAK_ID, attempt: s.current!.attempt, seq: 50, now: 0 })
+    return reduce(s, { type: 'buzz', playerId, clueId: TIEBREAK_ID, attempt: s.current!.attempt, seq: 51, emoji: T, now: 10 })
+  }
+
+  it('plays a tie-breaker for the players tied for first, and ranks its winner first', () => {
+    let s = reduce(tied(), { type: 'endGame' })
+    expect(s.phase).toBe('clue')
+    expect(s.tiebreak).toEqual({ players: ['p1', 'p2'], winner: null })
+    expect(s.current).toMatchObject({ id: TIEBREAK_ID, value: 0, lockedOut: ['p3'], status: 'reading' })
+    expect(toPublicState(s, 0).current).toMatchObject({ category: 'TB', text: 'tb clue', answer: null })
+    expect(reduce(s, { type: 'endRound' })).toBe(s)
+
+    // Cid can't buzz; Bob can, and wins it.
+    expect(openAndBuzz(s, 'p3').current!.buzzWinner).toBeNull()
+    s = run(openAndBuzz(s, 'p2'), { type: 'judge', correct: true }, { type: 'returnToBoard' })
+    expect(s.phase).toBe('game_over')
+    expect(s.tiebreak!.winner).toBe('p2')
+    expect(s.players.map((p) => p.score)).toEqual([300, 300, 100])
+    expect(toPublicState(s, 0).gameOver!.ranking.map((r) => [r.playerId, r.rank])).toEqual([['p2', 1], ['p1', 2], ['p3', 3]])
+    expect(s.history.at(-1)).toMatchObject({ clueId: TIEBREAK_ID, category: 'TB' })
+  })
+
+  it('shares the win when nobody gets it, or when the host ends the game during it', () => {
+    let s = reduce(tied(), { type: 'endGame' })
+    s = run(openAndBuzz(s, 'p1'), { type: 'judge', correct: false, target: T })
+    s = run(openAndBuzz(s, 'p2'), { type: 'judge', correct: false })
+    expect(s.current!.status).toBe('revealed')
+    s = reduce(s, { type: 'returnToBoard' })
+    expect(toPublicState(s, 0).gameOver!.ranking.slice(0, 2).map((r) => r.rank)).toEqual([1, 1])
+
+    expect(run(tied(), { type: 'endGame' }, { type: 'endGame' }).phase).toBe('game_over')
+  })
+
+  it('only starts after the last round or the final, and not without a tie for first with points', () => {
+    const noTie = run(tied(), { type: 'adjustScore', id: 'p1', delta: 1 }, { type: 'endGame' })
+    expect(noTie.phase).toBe('game_over')
+    const zero = started()
+    zero.board = { ...board, tiebreaker: { category: 'TB', clue: 'tb', answer: 'TB' } }
+    expect(reduce(zero, { type: 'endGame' }).phase).toBe('game_over')
+    // A board without one just ends.
+    expect(run(started(), { type: 'adjustScore', id: 'p1', delta: 0 }, { type: 'endGame' }).phase).toBe('game_over')
   })
 })

@@ -56,7 +56,10 @@ The bridge URL defaults to `ws://<page host>:8080/ws`. To use another one, set `
 6. **Rounds:** when a round's board is cleared, the next round starts. The lowest scorer gets control.
 7. **Final round:** players with a positive score wager, then type an answer before the timer runs out. The
    host reveals and judges each response, lowest score first.
-8. **Game over:** the board screen raises a podium (2nd, 1st, 3rd) and hands out awards one by one, each only
+8. **Tie-breaker** (optional, from the board): if the game ends with first place tied (with points), the tied
+   players buzz for one more clue while everyone else watches. Right wins the game (no points change);
+   if nobody gets it (or the host reveals the answer), they share the win.
+9. **Game over:** the board screen raises a podium (2nd, 1st, 3rd) and hands out awards one by one, each only
    when there's something to give it for: most right answers, fastest average buzz, closest photo finish,
    longest streak, biggest Daily Double won, comeback from the lowest score, most false starts and the
    final-round hero. Each phone shows its place and its own awards. The host can **download the results** as
@@ -138,7 +141,8 @@ Boards are JSON files in [`boards/`](boards). They're validated against a Zod sc
       ]
     }
   ],
-  "final": { "category": "Geography", "clue": "…", "answer": "…" }   // optional
+  "final": { "category": "Geography", "clue": "…", "answer": "…" },     // optional
+  "tiebreaker": { "category": "Quick maths", "clue": "…", "answer": "…" }  // optional, see "How a game plays"
 }
 ```
 
@@ -164,9 +168,15 @@ Clues and the final can have extras (all optional):
   },
   "answerMedia": { "type": "image", "src": "https://example.com/map.jpg" },  // replaces the media on reveal
   "source": "Wikipedia",                                                        // shown with the answer
-  "sourceUrl": "https://en.wikipedia.org/wiki/Sushi"
+  "sourceUrl": "https://en.wikipedia.org/wiki/Sushi",
+  "acceptedAnswers": ["Nippon"]                                                 // host only
 }
 ```
+
+**Accepted answers** are other ways to say the answer. The host sees them next to the answer, and when judging
+final-round responses the host's table marks each one **✓ matches** (same as an accepted answer once case,
+accents, punctuation and a leading "the/a/an" are ignored) or **≈ close** (a small typo, or the answer inside a
+longer response). The host still clicks Correct or Incorrect.
 
 On a Daily Double the picture sharpens from when the clue shows, and the wager never shrinks. The host always
 sees the source and what media is coming next to the answer, for disputes. Answer media and sources only

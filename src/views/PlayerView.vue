@@ -9,6 +9,7 @@ import SourceLine from '@/components/SourceLine.vue'
 import type { Media } from '@/content/schema'
 import { formatSeconds } from '@/game/buzzPad'
 import { ClientController } from '@/game/clientController'
+import { TIEBREAK_ID } from '@/game/engine'
 import { falseStartPoints, formatLockout } from '@/game/settings'
 import { useWakeLock } from '@/composables/useWakeLock'
 import { ignoreHotkey } from '@/keys'
@@ -256,7 +257,7 @@ onUnmounted(() => {
       <template v-else-if="phase === 'clue' && cur">
         <div class="panel center">
           <div class="muted">{{ cur.category }}</div>
-          <div class="value clue-value">{{ cur.dailyDouble ? 'DAILY DOUBLE' : clueValue }}</div>
+          <div class="value clue-value">{{ cur.dailyDouble ? 'DAILY DOUBLE' : cur.id === TIEBREAK_ID ? 'TIE-BREAKER' : clueValue }}</div>
           <p v-if="cur.text" class="clue-text serif">{{ cur.text }}</p>
           <p v-else-if="clueHidden" class="muted">🙈 Clue hidden — answer from memory!</p>
           <MediaView

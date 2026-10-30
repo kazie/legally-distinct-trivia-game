@@ -244,6 +244,7 @@ export class HostController {
       delete saved.emojiOnPhones
       saved.falseStarts ??= []
       saved.history ??= []
+      saved.tiebreak ??= null
       if (saved.current) {
         // Saved before blur reveals, buzz times and the answer timer.
         const defaults: Partial<CurrentClue> = { reveal: null, openedAt: null, buzzOrder: [], attempts: [], photoFinish: null, answerEndsAt: null }

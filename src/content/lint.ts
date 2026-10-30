@@ -70,5 +70,6 @@ export function lintBoard(board: Board): BoardIssue[] {
     }),
   )
   if (board.final) checkClue('final', board.final)
+  if (board.tiebreaker) checkClue('tiebreaker', board.tiebreaker)
   return warnings
 }

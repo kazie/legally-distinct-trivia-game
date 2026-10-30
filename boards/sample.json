@@ -24,12 +24,18 @@
             {
               "value": 600,
               "clue": "The first person to walk on the Moon, in 1969",
-              "answer": "Neil Armstrong"
+              "answer": "Neil Armstrong",
+              "acceptedAnswers": [
+                "Armstrong"
+              ]
             },
             {
               "value": 800,
               "clue": "The galaxy that contains our solar system",
-              "answer": "The Milky Way"
+              "answer": "The Milky Way",
+              "acceptedAnswers": [
+                "Milky Way galaxy"
+              ]
             },
             {
               "value": 1000,
@@ -339,6 +345,17 @@
     "clue": "This Swedish chemist invented dynamite and left his fortune to fund a set of famous prizes",
     "answer": "Alfred Nobel",
     "source": "The Nobel Prize",
-    "sourceUrl": "https://www.nobelprize.org/alfred-nobel/"
+    "sourceUrl": "https://www.nobelprize.org/alfred-nobel/",
+    "acceptedAnswers": [
+      "Nobel"
+    ]
+  },
+  "tiebreaker": {
+    "category": "Quick maths",
+    "clue": "The number of minutes in a day",
+    "answer": "1440",
+    "acceptedAnswers": [
+      "One thousand four hundred forty"
+    ]
   }
 }
