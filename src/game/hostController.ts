@@ -194,6 +194,7 @@ export class HostController {
         this.apply({ type: 'setFinalAnswer', id: message.playerId, text: message.text, now })
         return
       case 'state':
+      case 'react':
         return
     }
   }
@@ -245,6 +246,8 @@ export class HostController {
       saved.falseStarts ??= []
       saved.history ??= []
       saved.tiebreak ??= null
+      saved.categoriesShown ??= null
+      saved.pause ??= null
       if (saved.current) {
         // Saved before blur reveals, buzz times and the answer timer.
         const defaults: Partial<CurrentClue> = { reveal: null, openedAt: null, buzzOrder: [], attempts: [], photoFinish: null, answerEndsAt: null }

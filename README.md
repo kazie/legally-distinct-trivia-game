@@ -43,7 +43,10 @@ The bridge URL defaults to `ws://<page host>:8080/ws`. To use another one, set `
 1. **Lobby:** the host picks a board and the buzzer options (below). Players join with a name.
    **Intro** (optional, on by default): the board screen explains the rules, and the host runs practice buzzes
    (Space) so everyone learns how to buzz. It shows who was fastest, and no points are scored or lost.
-2. **Board:** the host picks a clue, usually the one named by the player in control (★).
+2. **Board:** each round opens with its categories face down, and the host reveals them one by one (Space or
+   →, **Enter** shows the rest), with a flip on the TV and the list growing on the phones. (Turn off **Reveal each round's
+   categories one by one** in the lobby to skip this.) Then the host picks a clue, usually the one named by the
+   player in control (★).
 3. **Clue:** the host reads it, then presses **Open buzzers** (Space), and players race to buzz from their
    phones. The first buzz wins, and that player's name goes up on the board screen and on every phone. Audio
    clues also get a player on every phone, so remote players can hear them properly. Pictures and video are
@@ -67,6 +70,11 @@ The bridge URL defaults to `ws://<page host>:8080/ws`. To use another one, set `
    average buzz, best streak).
 
 Along the way:
+- **Breaks:** between clues the host can take a break (**P**), with an optional message and a 5/10/15 minute
+  countdown. The TV shows "Back in 4:59 ☕" with the standings, phones show the break, and **P** resumes.
+- **Reactions** (on by default, lobby setting): players tap 😂 🔥 😱 👏 🤯 😬 on their phone and it floats up the
+  TV with their name. One per second per player, at most 30 on screen, and the row hides while buzzers open
+  so nobody mis-taps.
 - **Photo finish:** when others pressed right behind the winner, the board screen and host show by how much
   ("Bob +0.08 s · Cid +0.21 s", measured when the presses reached the host).
 - **Scores:** the leader wears a 👑, three or more clues in a row earn a 🔥, and changes float up from the score.
@@ -202,6 +210,7 @@ acts as the game server**:
   saves it to localStorage, so reloading the host tab resumes the game. After every change and every 3
   seconds, the host broadcasts a *public* snapshot with unrevealed answers removed.
 - Players and board screens send `hello`/`join`/`buzz`/`wager`/`final_answer` intents (`src/net/protocol.ts`).
+  `react` messages go from phones straight to board screens; the host ignores them.
   Late joiners and reconnecting clients get the full state from the next snapshot.
 - **Fair buzzing:** the bridge numbers every message on a topic with an increasing `seq`, and every
   subscriber sees the same order. The host publishes `buzzers_open` and notes its `seq` when the echo

@@ -33,7 +33,7 @@ function started(options: { intro?: boolean; settings?: Partial<GameSettings> } 
     { type: 'playerJoined', id: 'p1', name: ' Ann  ', now: 0 },
     { type: 'playerJoined', id: 'p2', name: 'Bob', now: 0 },
     { type: 'playerJoined', id: 'p3', name: 'Cid', now: 0 },
-    { type: 'startGame', intro: options.intro, settings: { buzzStyle: 'emoji', ...options.settings } },
+    { type: 'startGame', intro: options.intro, settings: { buzzStyle: 'emoji', roundIntro: false, ...options.settings } },
   )
 }
 
@@ -600,5 +600,46 @@ describe('tie-breaker', () => {
     expect(reduce(zero, { type: 'endGame' }).phase).toBe('game_over')
     // A board without one just ends.
     expect(run(started(), { type: 'adjustScore', id: 'p1', delta: 0 }, { type: 'endGame' }).phase).toBe('game_over')
+  })
+})
+
+describe('round intro and breaks', () => {
+  it('reveals categories one by one before any clue can be picked, every round', () => {
+    let s = started({ settings: { roundIntro: true } })
+    expect(s.categoriesShown).toBe(0)
+    expect(toPublicState(s, 0).round!.categories[0]).toEqual({ name: null, clues: [{ value: null, used: false }, { value: null, used: false }] })
+    expect(reduce(s, { type: 'selectClue', ref: B100 })).toBe(s)
+    s = reduce(s, { type: 'showNextCategory' })
+    expect(toPublicState(s, 0).round!.categories.map((c) => c.name)).toEqual(['A', null])
+    s = reduce(s, { type: 'showNextCategory' })
+    expect(s.categoriesShown).toBeNull()
+    expect(reduce(s, { type: 'showNextCategory' })).toBe(s)
+    expect(reduce(s, { type: 'selectClue', ref: B100 }).phase).toBe('clue')
+
+    // The next round starts face down again; "show all" skips ahead.
+    s = reduce(s, { type: 'endRound' })
+    expect(s.categoriesShown).toBe(0)
+    expect(reduce(s, { type: 'showAllCategories' }).categoriesShown).toBeNull()
+    // After the practice intro too.
+    s = run(started({ intro: true, settings: { roundIntro: true } }), { type: 'endIntro' })
+    expect(s.categoriesShown).toBe(0)
+  })
+
+  it('takes breaks only between clues, and blocks play until the host resumes', () => {
+    let s = started()
+    s = reduce(s, { type: 'pause', message: '  Pizza!  ', until: 60_000 })
+    expect(s.pause).toEqual({ message: 'Pizza!', until: 60_000 })
+    expect(toPublicState(s, 0).pause).toEqual(s.pause)
+    expect(reduce(s, { type: 'selectClue', ref: B100 })).toBe(s)
+    s = reduce(s, { type: 'resume' })
+    expect(s.pause).toBeNull()
+    s = reduce(s, { type: 'selectClue', ref: B100 })
+    expect(reduce(s, { type: 'pause', message: '', until: null })).toBe(s)
+
+    let f = run(started(), { type: 'adjustScore', id: 'p1', delta: 100 }, { type: 'startFinal' }, { type: 'pause', message: '', until: null })
+    expect(f.pause).not.toBeNull()
+    expect(reduce(f, { type: 'openFinalWagers' })).toBe(f)
+    f = run(f, { type: 'resume' }, { type: 'openFinalWagers' })
+    expect(f.phase).toBe('final_wager')
   })
 })

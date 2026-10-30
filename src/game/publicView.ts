@@ -23,13 +23,18 @@ export function toPublicState(state: GameState, now: number): PublicState {
             index: state.round,
             count: board.rounds.length,
             name: round.name,
-            categories: round.categories.map((category, c) => ({
-              name: category.name,
-              clues: category.clues.map((clue, i) => ({
-                value: clue.value,
-                used: state.used.includes(clueId({ round: state.round, category: c, clue: i })),
-              })),
-            })),
+            categories: round.categories.map((category, c) => {
+              // The round intro reveals categories one by one: names and values stay secret until then.
+              const shown = state.categoriesShown === null || c < state.categoriesShown
+              return {
+                name: shown ? category.name : null,
+                clues: category.clues.map((clue, i) => ({
+                  value: shown ? clue.value : null,
+                  used: state.used.includes(clueId({ round: state.round, category: c, clue: i })),
+                })),
+              }
+            }),
+            categoriesShown: state.categoriesShown,
           }
         : null,
     players: state.players.map((p) => ({
@@ -43,6 +48,7 @@ export function toPublicState(state: GameState, now: number): PublicState {
     current: publicCurrent(state),
     final: publicFinal(state),
     practice: publicPractice(state),
+    pause: state.pause,
     gameOver:
       state.phase === 'game_over'
         ? { ranking: ranking(state.players, state.tiebreak?.winner), awards: awards(state) }

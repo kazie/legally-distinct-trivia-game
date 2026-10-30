@@ -169,6 +169,16 @@ export interface GameState {
   history: ClueResult[]
   /** Set once the tie-breaker starts: who was tied for first, and who won it. */
   tiebreak: Tiebreak | null
+  /** Round intro: how many categories the host has revealed so far; null once all are (or without an intro). */
+  categoriesShown: number | null
+  /** A break between clues. */
+  pause: Pause | null
+}
+
+export interface Pause {
+  message: string
+  /** Host time the break is planned to end; null for no timer. */
+  until: number | null
 }
 
 export interface Tiebreak {
@@ -180,7 +190,8 @@ export interface Tiebreak {
 /* ---------- What gets broadcast to players and the board screen (no unrevealed answers) ---------- */
 
 export interface PublicClueCell {
-  value: number
+  /** Null while its category is still hidden in the round intro. */
+  value: number | null
   used: boolean
 }
 
@@ -286,7 +297,9 @@ export interface PublicState {
     index: number
     count: number
     name: string
-    categories: { name: string; clues: PublicClueCell[] }[]
+    /** A name is null while the round intro hasn't revealed that category yet. */
+    categories: { name: string | null; clues: PublicClueCell[] }[]
+    categoriesShown: number | null
   } | null
   players: PublicPlayer[]
   control: string | null
@@ -295,6 +308,7 @@ export interface PublicState {
   practice: PublicPractice | null
   /** Only in `game_over`. */
   gameOver: GameOver | null
+  pause: Pause | null
   settings: GameSettings
   hostTime: number
 }

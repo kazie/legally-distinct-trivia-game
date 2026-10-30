@@ -39,11 +39,16 @@ export type Action =
   | { type: 'showFinalResponse' }
   | { type: 'judgeFinal'; correct: boolean }
   | { type: 'endGame' }
+  | { type: 'showNextCategory' }
+  | { type: 'showAllCategories' }
+  | { type: 'pause'; message: string; until: number | null }
+  | { type: 'resume' }
 
 /** Answers that arrive this long after the final timer ran out are still accepted (network slack). */
 export const FINAL_ANSWER_GRACE_MS = 2000
 export const MAX_NAME_LENGTH = 24
 export const MAX_FINAL_ANSWER_LENGTH = 200
+export const MAX_PAUSE_MESSAGE_LENGTH = 80
 /** The clue id practice buzzes use in `buzzers_open` and `buzz` messages. */
 export const PRACTICE_ID = 'practice'
 /** The id of the tie-breaker clue, which isn't on the board. */
@@ -71,6 +76,8 @@ export function createGame(roomCode: string): GameState {
     falseStarts: [],
     history: [],
     tiebreak: null,
+    categoriesShown: null,
+    pause: null,
   }
 }
 
@@ -201,12 +208,18 @@ function runnerUp(cur: CurrentClue, playerId: string, now: number): boolean {
   return true
 }
 
+/** A round begins on the board: with the round intro on, its categories start hidden. */
+function startRound(s: GameState) {
+  s.phase = 'board'
+  s.categoriesShown = s.settings.roundIntro ? 0 : null
+}
+
 /** Moves on after a round is finished: next round, the final, or the end of the game. */
 function advanceRound(s: GameState) {
   s.current = null
   if (s.board && s.round + 1 < s.board.rounds.length) {
     s.round += 1
-    s.phase = 'board'
+    startRound(s)
     s.control = lowestScorer(s.players) ?? s.control
   } else if (s.board?.final) {
     startFinal(s)
@@ -318,11 +331,13 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
 
     case 'startGame':
       if (s.phase !== 'lobby' || !s.board) return false
-      s.phase = action.intro ? 'intro' : 'board'
       s.settings = normalizeSettings(action.settings)
+      if (action.intro) s.phase = 'intro'
+      else startRound(s)
       s.falseStarts = []
       s.history = []
       s.tiebreak = null
+      s.pause = null
       s.round = 0
       s.used = []
       s.current = null
@@ -342,7 +357,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
 
     case 'endIntro':
       if (s.phase !== 'intro') return false
-      s.phase = 'board'
+      startRound(s)
       s.practice = null
       // Players may have joined during the intro, after startGame found nobody to give control to.
       s.control ??= s.players[0]?.id ?? null
@@ -358,6 +373,8 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       s.falseStarts = []
       s.history = []
       s.tiebreak = null
+      s.categoriesShown = null
+      s.pause = null
       s.players.forEach((p) => (p.score = 0))
       return true
 
@@ -414,7 +431,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       return true
 
     case 'selectClue': {
-      if (s.phase !== 'board' || cur || !s.board) return false
+      if (s.phase !== 'board' || cur || !s.board || s.categoriesShown !== null || s.pause) return false
       const { ref } = action
       if (ref.round !== s.round) return false
       const clue = s.board.rounds[ref.round]?.categories[ref.category]?.clues[ref.clue]
@@ -576,7 +593,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       return true
 
     case 'openFinalWagers':
-      if (s.phase !== 'final_category') return false
+      if (s.phase !== 'final_category' || s.pause) return false
       s.phase = 'final_wager'
       return true
 
@@ -638,6 +655,29 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       f.responseShown = false
       return true
     }
+
+    case 'showNextCategory': {
+      const count = s.board?.rounds[s.round]?.categories.length ?? 0
+      if (s.phase !== 'board' || s.categoriesShown === null) return false
+      s.categoriesShown = s.categoriesShown + 1 >= count ? null : s.categoriesShown + 1
+      return true
+    }
+
+    case 'showAllCategories':
+      if (s.categoriesShown === null) return false
+      s.categoriesShown = null
+      return true
+
+    case 'pause':
+      // Only between clues, so nobody is mid-buzz.
+      if (s.phase !== 'board' && s.phase !== 'final_category') return false
+      s.pause = { message: action.message.trim().slice(0, MAX_PAUSE_MESSAGE_LENGTH), until: action.until }
+      return true
+
+    case 'resume':
+      if (!s.pause) return false
+      s.pause = null
+      return true
 
     case 'endGame':
       if (s.phase === 'lobby' || s.phase === 'game_over') return false

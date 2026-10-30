@@ -7,9 +7,10 @@ import MediaView from '@/components/MediaView.vue'
 import Scoreboard from '@/components/Scoreboard.vue'
 import SourceLine from '@/components/SourceLine.vue'
 import type { Media } from '@/content/schema'
-import { formatSeconds } from '@/game/buzzPad'
+import { formatCountdown, formatSeconds } from '@/game/buzzPad'
 import { ClientController } from '@/game/clientController'
 import { TIEBREAK_ID } from '@/game/engine'
+import { REACTIONS } from '@/game/reactions'
 import { falseStartPoints, formatLockout } from '@/game/settings'
 import { useWakeLock } from '@/composables/useWakeLock'
 import { ignoreHotkey } from '@/keys'
@@ -56,6 +57,18 @@ const myRank = computed(() => gameOver.value?.ranking.find((r) => isMe(r.playerI
 const winners = computed(() => gameOver.value?.ranking.filter((r) => r.rank === 1).map((r) => client.nameOf(r.playerId)) ?? [])
 const myAwards = computed(() => gameOver.value?.awards.filter((a) => a.playerIds.some(isMe)) ?? [])
 const answerLeft = computed(() => client.remainingMs(cur.value?.answerEndsAt ?? null))
+const pause = computed(() => state.value?.pause ?? null)
+const pauseLeft = computed(() => client.remainingMs(pause.value?.until ?? null))
+/** The round intro's categories so far, as the host reveals them. */
+const introCategories = computed(() => {
+  const round = state.value?.round
+  return round?.categoriesShown === null ? null : (round?.categories.flatMap((c) => (c.name === null ? [] : [c.name])) ?? null)
+})
+/** Reactions stay out of the way while buzzers open, so nobody taps one by mistake. */
+const canReact = computed(() => {
+  const status = client.buzzable.value?.status
+  return settings.value.reactions && phase.value !== 'lobby' && status !== 'opening' && status !== 'open'
+})
 /** "Say your answer", with the seconds left when the host uses an answer timer. */
 const answerPrompt = computed(() => (answerLeft.value === null ? 'Say your answer' : `Say your answer · ${Math.ceil(answerLeft.value / 1000)} s`))
 const emojiOnPhones = computed(() => settings.value.emojiOnPhones)
@@ -226,8 +239,13 @@ onUnmounted(() => {
         <span class="value score">{{ me.score }}</span>
       </div>
 
+      <div v-if="pause" class="panel center stack">
+        <h2>{{ pause.message || 'Short break' }} ☕</h2>
+        <p v-if="pauseLeft" class="big">Back in {{ formatCountdown(pauseLeft) }}</p>
+      </div>
+
       <!-- Lobby / board -->
-      <div v-if="phase === 'lobby'" class="panel center">
+      <div v-else-if="phase === 'lobby'" class="panel center">
         <h2>You're in!</h2>
         <p class="muted">Waiting for the host to start.</p>
       </div>
@@ -246,6 +264,14 @@ onUnmounted(() => {
         <BuzzButton v-if="bigButton" :mode="pad.mode" :label="pad.label" :sublabel="pad.sublabel" @press="press()" />
         <BuzzPad v-else :mode="pad.mode" :label="pad.label" :sublabel="pad.sublabel" :target="padTarget" @press="press" />
       </template>
+
+      <div v-else-if="phase === 'board' && introCategories" class="panel center stack">
+        <h2>{{ state.round?.name }}</h2>
+        <p class="muted">The categories are…</p>
+        <ul class="categories">
+          <li v-for="name in introCategories" :key="name" class="gold serif">{{ name }}</li>
+        </ul>
+      </div>
 
       <div v-else-if="phase === 'board'" class="panel center">
         <p v-if="isMe(state.control)" class="big gold">Your pick! Tell the host a category and value.</p>
@@ -375,6 +401,12 @@ onUnmounted(() => {
         </ul>
       </div>
 
+      <div v-if="canReact" class="react-row">
+        <button v-for="(emoji, i) in REACTIONS" :key="emoji" class="ghost" :aria-label="`React ${emoji}`" @click="client.react(i)">
+          {{ emoji }}
+        </button>
+      </div>
+
       <Scoreboard class="scores" :players="state.players" :control="state.control" :me="client.playerId" sorted />
     </template>
   </main>
@@ -452,6 +484,22 @@ onUnmounted(() => {
 }
 .scores {
   margin-top: auto;
+}
+.categories {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 1.3rem;
+  text-transform: uppercase;
+}
+.react-row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: auto;
+}
+.react-row button {
+  font-size: 1.6rem;
+  padding: 0.3em 0.4em;
 }
 .my-awards {
   list-style: none;

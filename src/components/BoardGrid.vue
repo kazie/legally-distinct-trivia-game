@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { ref, watch } from 'vue'
 import type { PublicState } from '@/game/types'
 
 type Round = NonNullable<PublicState['round']>
 
-defineProps<{
+const props = defineProps<{
   round: Round
   /** Host mode: unused cells are buttons. */
   selectable?: boolean
@@ -11,18 +12,39 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{ select: [category: number, clue: number] }>()
+
+/** Categories the round intro just revealed: they flip in. */
+const flipping = ref(new Set<number>())
+watch(
+  () => props.round.categories.map((c) => c.name === null),
+  (hidden, before) => {
+    flipping.value = new Set(hidden.flatMap((h, c) => (!h && before[c] ? [c] : [])))
+  },
+)
 </script>
 
 <template>
   <div class="grid" :style="{ '--cols': round.categories.length }">
-    <div v-for="(category, c) in round.categories" :key="`h${c}`" class="head">{{ category.name }}</div>
+    <div
+      v-for="(category, c) in round.categories"
+      :key="`h${c}`"
+      class="head"
+      :class="{ hidden: category.name === null, flip: flipping.has(c) }"
+    >
+      {{ category.name }}
+    </div>
     <template v-for="row in round.categories[0]?.clues.length ?? 0" :key="row">
       <component
         :is="selectable ? 'button' : 'div'"
         v-for="(category, c) in round.categories"
         :key="`${c}-${row}`"
         class="cell"
-        :class="{ used: category.clues[row - 1]?.used, dd: dailyDoubles?.includes(`${round.index}-${c}-${row - 1}`) }"
+        :class="{
+          used: category.clues[row - 1]?.used,
+          dd: dailyDoubles?.includes(`${round.index}-${c}-${row - 1}`),
+          hidden: category.name === null,
+          flip: flipping.has(c),
+        }"
         :disabled="selectable ? category.clues[row - 1]?.used : undefined"
         @click="selectable && !category.clues[row - 1]?.used && emit('select', c, row - 1)"
       >
@@ -73,5 +95,22 @@ button.cell {
 }
 .cell.dd:not(.used) {
   box-shadow: inset 0 0 0 3px var(--gold);
+}
+/* Round intro: categories wait face down, then flip in one by one. */
+.hidden {
+  background: var(--cell-used);
+}
+.flip {
+  animation: flip 0.6s ease-out;
+}
+@keyframes flip {
+  from {
+    transform: rotateX(90deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flip {
+    animation: none;
+  }
 }
 </style>

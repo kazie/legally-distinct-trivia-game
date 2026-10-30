@@ -5,6 +5,8 @@ import { BridgeClient } from '@/net/bridgeClient'
 import { HostController, hostStorageKey } from '@/game/hostController'
 import { ClientController } from '@/game/clientController'
 import { DEFAULT_SETTINGS } from '@/game/settings'
+import { encode } from '@/net/protocol'
+import { roomTopic } from '@/game/roomCode'
 import { FakeBridge, MemoryStorage, flush } from '@/dev/fakeBridge'
 
 const result = validateBoard(sample)
@@ -14,7 +16,7 @@ const board: Board = result.board
 const stops: (() => void)[] = []
 /** The existing races are played on the emoji pad, with a short lockout to keep tests quick. */
 const EMOJI_LOCKOUT = 250
-const EMOJI = { buzzStyle: 'emoji', lockoutMs: EMOJI_LOCKOUT } as const
+const EMOJI = { buzzStyle: 'emoji', lockoutMs: EMOJI_LOCKOUT, roundIntro: false } as const
 afterEach(() => stops.splice(0).forEach((fn) => fn()))
 
 function setup(hostStorage = new MemoryStorage()) {
@@ -102,7 +104,7 @@ describe('host and players over the bridge', () => {
     bob.join('Bob')
     await flush()
     host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
-    host.dispatch({ type: 'startGame', settings: { buzzStyle: 'emoji', emojiOnPhones } })
+    host.dispatch({ type: 'startGame', settings: { buzzStyle: 'emoji', emojiOnPhones, roundIntro: false } })
     host.dispatch({ type: 'selectClue', ref: { round: 0, category: 0, clue: 0 } })
     await flush()
     expect(ann.phoneTarget.value).toBeNull()
@@ -119,7 +121,7 @@ describe('host and players over the bridge', () => {
   it.each([undefined, true])('resumes games saved before settings existed as emoji games (emoji on phones: %s)', (emojiOnPhones) => {
     const { host, hostStorage } = setup()
     host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
-    host.dispatch({ type: 'startGame' })
+    host.dispatch({ type: 'startGame', settings: { roundIntro: false } })
     host.dispatch({ type: 'selectClue', ref: { round: 0, category: 0, clue: 0 } })
     const saved = JSON.parse(hostStorage.getItem(hostStorageKey('ROOM'))!)
     delete saved.settings
@@ -176,7 +178,7 @@ describe('host and players over the bridge', () => {
     bob.join('Bob')
     await flush()
     host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
-    host.dispatch({ type: 'startGame', settings: { lockoutMs: 250 } })
+    host.dispatch({ type: 'startGame', settings: { lockoutMs: 250, roundIntro: false } })
     host.dispatch({ type: 'selectClue', ref: { round: 0, category: 0, clue: 0 } })
     await flush()
 
@@ -214,7 +216,7 @@ describe('host and players over the bridge', () => {
     bob.join('Bob')
     await flush()
     host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
-    host.dispatch({ type: 'startGame' })
+    host.dispatch({ type: 'startGame', settings: { roundIntro: false } })
     host.dispatch({ type: 'selectClue', ref: { round: 0, category: 0, clue: 0 } })
     host.dispatch({ type: 'adjustScore', id: bob.playerId, delta: 500 })
     await flush()
@@ -245,7 +247,7 @@ describe('host and players over the bridge', () => {
     bob.join('Bob')
     await flush()
     host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
-    host.dispatch({ type: 'startGame', settings: { openMode: 'instant' } })
+    host.dispatch({ type: 'startGame', settings: { openMode: 'instant', roundIntro: false } })
     host.dispatch({ type: 'selectClue', ref: { round: 0, category: 0, clue: 0 }, target: 2 })
     await flush()
     expect(ann.canBuzz.value).toBe(true)
@@ -421,6 +423,38 @@ describe('host and players over the bridge', () => {
     // A host reload resumes from storage.
     const restored = new HostController({ bridge: host['bridge'], roomCode: 'ROOM', storage: hostStorage })
     expect(restored.state.value.players[0]?.score).toBe(400)
+  })
+
+  it('shows player reactions on the board screen, one per second per player, only when allowed', async () => {
+    const { host, player, connect } = setup()
+    const ann = player(1)
+    const tv = new ClientController({ bridge: connect(), roomCode: 'ROOM', role: 'board', storage: new MemoryStorage() })
+    tv.start()
+    stops.push(() => tv.stop())
+    await flush()
+    ann.join('Ann')
+    await flush()
+    host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
+    host.dispatch({ type: 'startGame', settings: { roundIntro: false } })
+    await flush()
+
+    expect(ann.react(2)).toBe(true)
+    // The phone holds back a second reaction within the second…
+    expect(ann.react(3)).toBe(false)
+    await flush()
+    expect(tv.reactions.value.map((r) => [r.playerId, r.emoji])).toEqual([[ann.playerId, 2]])
+    // …and the TV ignores one that gets through anyway, and any from someone not in the game.
+    const bridge = connect()
+    await flush()
+    bridge.publish(roomTopic('ROOM'), encode({ type: 'react', from: 'player', playerId: ann.playerId, emoji: 4 }), { echo: false })
+    bridge.publish(roomTopic('ROOM'), encode({ type: 'react', from: 'player', playerId: 'stranger', emoji: 4 }), { echo: false })
+    await flush()
+    expect(tv.reactions.value).toHaveLength(1)
+
+    host.dispatch({ type: 'resetToLobby' })
+    host.dispatch({ type: 'startGame', settings: { roundIntro: false, reactions: false } })
+    await flush()
+    expect(ann.react(1)).toBe(false)
   })
 
   it('sends a kicked player back to the join form', async () => {
