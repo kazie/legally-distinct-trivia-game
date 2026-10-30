@@ -319,6 +319,8 @@ export interface GameOver {
 export interface PublicState {
   roomCode: string
   title: string | null
+  /** The board's credit line, for the TV's lobby screen. */
+  credit: string | null
   hasFinal: boolean
   phase: Phase
   round: {

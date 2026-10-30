@@ -143,6 +143,8 @@ export const BoardSchema = z.object({
   final: FinalSchema.optional(),
   /** Played only when the game ends with first place tied: a buzzer clue for the tied players. */
   tiebreaker: FinalSchema.optional(),
+  /** Shown on the TV's lobby screen, e.g. where the questions come from. */
+  credit: z.string().trim().min(1).optional(),
 })
 
 export type Media = z.infer<typeof MediaSchema>

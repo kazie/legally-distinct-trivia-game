@@ -293,6 +293,11 @@ describe('story harness renders real screens', () => {
     expect(w.find('.phone').text()).toContain('You said 90: right!')
   })
 
+  it('credits the question source on the TV before the game', async () => {
+    const w = await render('Lobby: credited board', () => [h(BoardView, { room: DEMO_ROOM })])
+    expect(w.text()).toContain('Questions from Open Trivia DB (opentdb.com), CC BY-SA 4.0')
+  })
+
   it('lets the host judge from the control panel', async () => {
     const w = await render('Clue: Bob answering', () => [h(HostView, { room: DEMO_ROOM }), h(StoryPlayer, { playerId: BOB })], false)
     const correct = w.findAll('button').find((b) => b.text().startsWith('Correct'))!
