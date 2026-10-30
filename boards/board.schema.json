@@ -39,6 +39,22 @@
                   "items": {
                     "type": "object",
                     "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "buzz",
+                          "allPlay",
+                          "closest"
+                        ]
+                      },
+                      "number": {
+                        "type": "number"
+                      },
+                      "seconds": {
+                        "type": "integer",
+                        "minimum": 5,
+                        "maximum": 120
+                      },
                       "value": {
                         "type": "integer",
                         "exclusiveMinimum": 0,

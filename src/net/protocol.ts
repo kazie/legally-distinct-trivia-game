@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { REACTIONS } from '@/game/reactions'
 import type { PublicState } from '@/game/types'
 
-export const PROTOCOL_VERSION = 7
+export const PROTOCOL_VERSION = 8
 
 const id = z.string().min(1).max(64)
 const base = { v: z.literal(PROTOCOL_VERSION) }
@@ -34,6 +34,16 @@ export const MessageSchema = z.discriminatedUnion('type', [
     amount: z.number(),
   }),
   z.object({ ...base, type: z.literal('final_answer'), from: z.literal('player'), playerId: id, text: z.string().max(500) }),
+  z.object({
+    ...base,
+    type: z.literal('clue_answer'),
+    from: z.literal('player'),
+    playerId: id,
+    clueId: z.string(),
+    /** An all-play answer, or a closest guess. */
+    text: z.string().max(500).optional(),
+    number: z.number().optional(),
+  }),
   // Players → board screens (the host ignores these).
   z.object({
     ...base,

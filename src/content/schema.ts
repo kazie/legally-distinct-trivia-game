@@ -56,16 +56,37 @@ const answerExtras = {
   acceptedAnswers: z.array(z.string().trim().min(1)).optional(),
 }
 
-export const ClueSchema = z.object({
-  value: z.number().int().positive(),
-  clue: z.string().trim().min(1, 'Clue text is required'),
-  answer: z.string().trim().min(1, 'Answer is required'),
-  dailyDouble: z.boolean().optional(),
-  media: MediaSchema.optional(),
-  ...answerExtras,
-  /** Only ever shown to the host. */
-  notes: z.string().optional(),
-})
+/** Default time to answer an all-play or closest clue, in seconds. */
+export const DEFAULT_ANSWER_SECONDS = 20
+
+export const ClueSchema = z
+  .object({
+    /**
+     * `buzz` (default): first to buzz answers. `allPlay`: everyone types an answer, each right one scores.
+     * `closest`: everyone guesses a number, the closest guess wins.
+     */
+    kind: z.enum(['buzz', 'allPlay', 'closest']).optional(),
+    /** The right number, for `closest` clues. */
+    number: z.number().optional(),
+    /** Answer time for `allPlay` and `closest` clues (default 20). */
+    seconds: z.number().int().min(5).max(120).optional(),
+    value: z.number().int().positive(),
+    clue: z.string().trim().min(1, 'Clue text is required'),
+    answer: z.string().trim().min(1, 'Answer is required'),
+    dailyDouble: z.boolean().optional(),
+    media: MediaSchema.optional(),
+    ...answerExtras,
+    /** Only ever shown to the host. */
+    notes: z.string().optional(),
+  })
+  .superRefine((clue, ctx) => {
+    if (clue.kind === 'closest' && clue.number === undefined) {
+      ctx.addIssue({ code: 'custom', path: ['number'], message: 'A closest-number clue needs the right number' })
+    }
+    if (clue.dailyDouble && (clue.kind ?? 'buzz') !== 'buzz') {
+      ctx.addIssue({ code: 'custom', path: ['dailyDouble'], message: 'Only buzzer clues can be Daily Doubles' })
+    }
+  })
 
 export const CategorySchema = z.object({
   name: z.string().trim().min(1, 'Category name is required'),
@@ -127,6 +148,7 @@ export const BoardSchema = z.object({
 export type Media = z.infer<typeof MediaSchema>
 export type Reveal = z.infer<typeof RevealSchema>
 export type Clue = z.infer<typeof ClueSchema>
+export type ClueKind = NonNullable<Clue['kind']>
 export type Category = z.infer<typeof CategorySchema>
 export type Round = z.infer<typeof RoundSchema>
 export type Final = z.infer<typeof FinalSchema>

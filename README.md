@@ -157,6 +157,25 @@ Boards are JSON files in [`boards/`](boards). They're validated against a Zod sc
 Rules: every category in a round has the same number of clues, values go up, and each clue has clue text and
 an answer.
 
+### Clue kinds
+
+Most clues are buzzer clues. Two other kinds have everyone answer at once on their phone (they're never Daily
+Doubles, and quick draw doesn't apply):
+
+```jsonc
+{ "value": 400, "clue": "The ship that sank on its maiden voyage in 1912", "answer": "Titanic",
+  "kind": "allPlay", "seconds": 20 }          // seconds to answer, default 20
+{ "value": 800, "clue": "The number of keys on a standard piano", "answer": "88",
+  "kind": "closest", "number": 88 }
+```
+
+- **All-play:** the host opens answers (Space) and everyone types one before the countdown ends (the TV shows
+  "3/5 answered"). Then the host judges: exact matches with the answer or an accepted answer are ticked already,
+  the rest get ✓/✗. Every right answer wins the value, wrong ones cost nothing, and the earliest right answer
+  gets control. The TV then shows everyone's answer with ✓/✗.
+- **Closest number:** everyone guesses a number; when the host closes answers, the closest guess wins the value
+  (ties share) and gets control. The TV shows the guesses on a number line with the answer in gold.
+
 ### Media, reveals and sources
 
 Clues and the final can have extras (all optional):
@@ -210,7 +229,8 @@ acts as the game server**:
   saves it to localStorage, so reloading the host tab resumes the game. After every change and every 3
   seconds, the host broadcasts a *public* snapshot with unrevealed answers removed.
 - Players and board screens send `hello`/`join`/`buzz`/`wager`/`final_answer` intents (`src/net/protocol.ts`).
-  `react` messages go from phones straight to board screens; the host ignores them.
+  `react` messages go from phones straight to board screens; the host ignores them. `clue_answer` carries an
+  all-play answer or a closest guess.
   Late joiners and reconnecting clients get the full state from the next snapshot.
 - **Fair buzzing:** the bridge numbers every message on a topic with an increasing `seq`, and every
   subscriber sees the same order. The host publishes `buzzers_open` and notes its `seq` when the echo

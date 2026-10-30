@@ -246,6 +246,14 @@ export class ClientController {
     this.reactions.value = [...live, { id: ++this.reactionCount, playerId, emoji, at: now }]
   }
 
+  /** An all-play answer (text) or a closest guess (number) for the clue on screen. */
+  clueAnswer(answer: string | number): boolean {
+    const cur = this.state.value?.current
+    if (!cur || cur.status !== 'collecting') return false
+    const value = typeof answer === 'number' ? { number: answer } : { text: answer }
+    return this.send({ type: 'clue_answer', from: 'player', playerId: this.playerId, clueId: cur.id, ...value })
+  }
+
   finalAnswer(text: string): boolean {
     return this.send({ type: 'final_answer', from: 'player', playerId: this.playerId, text })
   }

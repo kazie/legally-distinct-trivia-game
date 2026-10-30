@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import BoardGrid from '@/components/BoardGrid.vue'
+import ClueResults from '@/components/ClueResults.vue'
 import ClueText from '@/components/ClueText.vue'
 import ConnectionBadge from '@/components/ConnectionBadge.vue'
 import JoinQr from '@/components/JoinQr.vue'
@@ -232,6 +233,14 @@ onUnmounted(() => {
           <span>{{ Math.ceil(answerLeft / 1000) }}</span>
         </div>
         <div v-if="photoFinish && cur.status !== 'revealed'" class="muted photo-finish">📸 {{ photoFinish }}</div>
+        <p v-if="cur.kind !== 'buzz' && cur.status === 'reading'" class="sub">
+          Everyone answers on their phone: {{ cur.kind === 'closest' ? 'closest guess wins!' : 'every right answer scores!' }}
+        </p>
+        <template v-else-if="cur.status === 'collecting'">
+          <div class="value timer">{{ Math.ceil((answerLeft ?? 0) / 1000) }}</div>
+          <p class="sub">{{ cur.answered.length }} / {{ state.players.length }} answered</p>
+        </template>
+        <p v-else-if="cur.status === 'judging'" class="sub">Checking answers…</p>
         <div v-else-if="cur.status === 'open' && cur.target !== null" class="target">
           <span class="target-emoji">{{ BUZZ_EMOJIS[cur.target] }}</span>
           <small class="gold">Tap it to buzz!</small>
@@ -242,6 +251,7 @@ onUnmounted(() => {
           <small v-if="cur.correctPlayer">{{ client.nameOf(cur.correctPlayer) }} +{{ cur.value }}</small>
           <SourceLine :source="cur.source" :url="cur.sourceUrl" />
         </div>
+        <ClueResults v-if="cur.results" class="results" :results="cur.results" :number="cur.number" :name-of="(id) => client.nameOf(id)" />
         <div v-if="cur.lockedOut.length && cur.status !== 'revealed'" class="muted locked">
           Wrong: {{ cur.lockedOut.map((id) => client.nameOf(id)).join(', ') }}
         </div>
@@ -556,6 +566,9 @@ onUnmounted(() => {
   height: 100%;
   background: var(--gold);
   transition: width 0.25s linear;
+}
+.results {
+  font-size: 1.6em;
 }
 .photo-finish {
   font-size: 1.3em;

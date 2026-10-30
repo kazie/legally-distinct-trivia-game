@@ -7,7 +7,17 @@ import MediaFields from '@/components/MediaFields.vue'
 import AnswerFields from '@/components/AnswerFields.vue'
 import SingleClueFields from '@/components/SingleClueFields.vue'
 import { lintBoard } from '@/content/lint'
-import { cluePath, emptyBoard, parseCluePath, validateBoard, type Board, type BoardIssue, type Clue } from '@/content/schema'
+import {
+  cluePath,
+  DEFAULT_ANSWER_SECONDS,
+  emptyBoard,
+  parseCluePath,
+  validateBoard,
+  type Board,
+  type BoardIssue,
+  type Clue,
+  type ClueKind,
+} from '@/content/schema'
 
 const props = defineProps<{ boardId?: string }>()
 const router = useRouter()
@@ -204,6 +214,27 @@ function removeRow() {
   if (!r || rows.value <= 1) return
   r.categories.forEach((category) => category.clues.pop())
   selected.value = null
+}
+
+/** Buzzer clues keep the JSON tidy (no `kind`); only they can be Daily Doubles. */
+function setKind(clue: Clue, kind: ClueKind) {
+  if (kind === 'buzz') {
+    delete clue.kind
+    delete clue.number
+    delete clue.seconds
+    return
+  }
+  clue.kind = kind
+  delete clue.dailyDouble
+  if (kind === 'closest' && clue.number === undefined && clue.answer.trim() !== '' && Number.isFinite(Number(clue.answer))) {
+    clue.number = Number(clue.answer)
+  }
+}
+
+/** Empty clears an optional number. */
+function setNumber(clue: Clue, key: 'number' | 'seconds', raw: string) {
+  if (raw === '') delete clue[key]
+  else clue[key] = Number(raw)
 }
 
 /** Adds or removes the final round or the tie-breaker. */
@@ -409,7 +440,30 @@ function applyJson() {
           <h3>{{ round?.categories[selected.category]?.name }} · {{ selectedClue.value }}</h3>
           <div class="row">
             <label>Value <input v-model.number="selectedClue.value" type="number" min="1" /></label>
-            <label class="check">
+            <label>
+              Kind
+              <select :value="selectedClue.kind ?? 'buzz'" @change="setKind(selectedClue, ($event.target as HTMLSelectElement).value as ClueKind)">
+                <option value="buzz">Buzzer: first to buzz answers</option>
+                <option value="allPlay">All-play: everyone types an answer</option>
+                <option value="closest">Closest number: everyone guesses</option>
+              </select>
+            </label>
+            <label v-if="selectedClue.kind === 'closest'">
+              Right number
+              <input type="number" step="any" :value="selectedClue.number ?? ''" @input="setNumber(selectedClue, 'number', ($event.target as HTMLInputElement).value)" />
+            </label>
+            <label v-if="selectedClue.kind && selectedClue.kind !== 'buzz'">
+              Seconds to answer
+              <input
+                type="number"
+                min="5"
+                max="120"
+                :value="selectedClue.seconds ?? ''"
+                :placeholder="String(DEFAULT_ANSWER_SECONDS)"
+                @input="setNumber(selectedClue, 'seconds', ($event.target as HTMLInputElement).value)"
+              />
+            </label>
+            <label v-if="(selectedClue.kind ?? 'buzz') === 'buzz'" class="check">
               <input v-model="selectedClue.dailyDouble" type="checkbox" />
               Daily Double
             </label>

@@ -44,6 +44,9 @@ const wagerInput = ref<number | null>(null)
 const finalText = ref('')
 const sentWager = ref<number | null>(null)
 const sentAnswer = ref<string | null>(null)
+/** All-play answer / closest guess for the clue on screen. */
+const clueText = ref('')
+const guessInput = ref<number | null>(null)
 
 const cur = computed(() => state.value?.current ?? null)
 const final = computed(() => state.value?.final ?? null)
@@ -57,6 +60,8 @@ const myRank = computed(() => gameOver.value?.ranking.find((r) => isMe(r.playerI
 const winners = computed(() => gameOver.value?.ranking.filter((r) => r.rank === 1).map((r) => client.nameOf(r.playerId)) ?? [])
 const myAwards = computed(() => gameOver.value?.awards.filter((a) => a.playerIds.some(isMe)) ?? [])
 const answerLeft = computed(() => client.remainingMs(cur.value?.answerEndsAt ?? null))
+/** This player's answer on an all-play or closest clue, once revealed. */
+const myResult = computed(() => cur.value?.results?.find((r) => isMe(r.playerId)) ?? null)
 const pause = computed(() => state.value?.pause ?? null)
 const pauseLeft = computed(() => client.remainingMs(pause.value?.until ?? null))
 /** The round intro's categories so far, as the host reveals them. */
@@ -163,6 +168,12 @@ function sendWager(kind: 'daily' | 'final') {
   if (client.wager(kind, wagerInput.value)) sentWager.value = wagerInput.value
 }
 
+function sendClueAnswer() {
+  const kind = cur.value?.kind
+  if (kind === 'closest' && guessInput.value !== null && Number.isFinite(guessInput.value)) client.clueAnswer(guessInput.value)
+  else if (kind === 'allPlay' && clueText.value.trim()) client.clueAnswer(clueText.value)
+}
+
 function sendAnswer() {
   if (client.finalAnswer(finalText.value)) sentAnswer.value = finalText.value
 }
@@ -173,6 +184,8 @@ watch(
   () => {
     wagerInput.value = null
     sentWager.value = null
+    clueText.value = ''
+    guessInput.value = null
   },
 )
 
@@ -187,6 +200,7 @@ watch(
 function onKey(event: KeyboardEvent) {
   if (ignoreHotkey(event)) return
   if (event.repeat || cur.value?.dailyDouble || (phase.value !== 'clue' && phase.value !== 'intro')) return
+  if (phase.value === 'clue' && cur.value?.kind !== 'buzz') return
   if (bigButton.value) {
     if (event.code !== 'Space' && !/^(Digit|Numpad)[1-9]$/.test(event.code)) return
     event.preventDefault()
@@ -314,16 +328,39 @@ onUnmounted(() => {
           <template v-else>{{ buzzWinnerName }}<small>is answering</small></template>
         </div>
 
+        <div v-else-if="cur.kind !== 'buzz' && cur.status !== 'revealed'" class="panel stack center">
+          <p v-if="cur.status === 'reading'" class="big">
+            {{ cur.kind === 'closest' ? 'Get ready to guess a number!' : 'Get ready to type your answer!' }}
+          </p>
+          <form v-else-if="cur.status === 'collecting'" class="stack" @submit.prevent="sendClueAnswer">
+            <div class="value timer">{{ Math.ceil((answerLeft ?? 0) / 1000) }}</div>
+            <input
+              v-if="cur.kind === 'closest'"
+              v-model.number="guessInput"
+              type="number"
+              inputmode="decimal"
+              step="any"
+              placeholder="Your guess"
+            />
+            <input v-else v-model="clueText" maxlength="200" autocomplete="off" placeholder="Your answer" />
+            <button class="primary" type="submit" :disabled="answerLeft === 0">
+              {{ cur.answered.includes(client.playerId) ? 'Change answer' : 'Send answer' }}
+            </button>
+            <p v-if="cur.answered.includes(client.playerId)" class="muted">Answer received.</p>
+          </form>
+          <p v-else class="big">Checking answers…</p>
+        </div>
+
         <!-- Stays mounted (and the same size) for the whole clue, so nothing jumps between states. -->
         <BuzzButton
-          v-else-if="!cur.dailyDouble && bigButton"
+          v-else-if="cur.kind === 'buzz' && !cur.dailyDouble && bigButton"
           :mode="pad.mode"
           :label="pad.label"
           :sublabel="pad.sublabel"
           @press="press()"
         />
         <BuzzPad
-          v-else-if="!cur.dailyDouble"
+          v-else-if="cur.kind === 'buzz' && !cur.dailyDouble"
           :mode="pad.mode"
           :label="pad.label"
           :sublabel="pad.sublabel"
@@ -335,6 +372,10 @@ onUnmounted(() => {
           <div class="muted">Answer</div>
           <p class="big gold serif">{{ cur.answer }}</p>
           <p v-if="cur.correctPlayer">{{ isMe(cur.correctPlayer) ? 'You got it!' : `${client.nameOf(cur.correctPlayer)} got it` }}</p>
+          <p v-if="myResult" :class="myResult.correct ? 'ok-note' : 'muted'">
+            You said {{ myResult.text ?? myResult.number }}: {{ myResult.correct ? `right! +${cur.value}` : 'not this time' }}
+          </p>
+          <p v-else-if="cur.results" class="muted">You didn't answer.</p>
           <SourceLine :source="cur.source" :url="cur.sourceUrl" />
         </div>
       </template>
