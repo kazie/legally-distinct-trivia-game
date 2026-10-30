@@ -457,6 +457,43 @@ describe('host and players over the bridge', () => {
     expect(ann.react(1)).toBe(false)
   })
 
+  it('collects all-play answers and closest guesses from phones', async () => {
+    const { host, player } = setup()
+    const [ann, bob] = [player(1), player(2)]
+    await flush()
+    ann.join('Ann')
+    bob.join('Bob')
+    await flush()
+    host.dispatch({ type: 'loadBoard', board, dailyDoubles: [] })
+    host.dispatch({ type: 'startGame', settings: { roundIntro: false } })
+    host.dispatch({ type: 'endRound' })
+    host.dispatch({ type: 'selectClue', ref: { round: 1, category: 0, clue: 0 } })
+    await flush()
+    // Too early: answers aren't open yet.
+    expect(ann.clueAnswer('Titanic')).toBe(false)
+    host.dispatch({ type: 'openAnswers', now: Date.now() })
+    await flush()
+    ann.clueAnswer('Titanic')
+    bob.clueAnswer('Lusitania')
+    await flush()
+    expect(bob.state.value?.current?.answered).toEqual([ann.playerId, bob.playerId])
+    host.dispatch({ type: 'closeAnswers' })
+    host.dispatch({ type: 'finishJudging' })
+    await flush()
+    expect(bob.state.value?.players.map((p) => p.score)).toEqual([400, 0])
+
+    host.dispatch({ type: 'returnToBoard' })
+    host.dispatch({ type: 'selectClue', ref: { round: 1, category: 1, clue: 1 } })
+    host.dispatch({ type: 'openAnswers', now: Date.now() })
+    await flush()
+    ann.clueAnswer(70)
+    bob.clueAnswer(90)
+    await flush()
+    host.dispatch({ type: 'closeAnswers' })
+    await flush()
+    expect(ann.state.value?.current?.results?.find((r) => r.correct)?.playerId).toBe(bob.playerId)
+  })
+
   it('sends a kicked player back to the join form', async () => {
     const { host, player } = setup()
     const ann = player(1)

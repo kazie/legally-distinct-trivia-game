@@ -65,14 +65,20 @@ const boardUrl = `${location.origin}/board/${props.room}`
 const cur = computed(() => game.value.current)
 const final = computed(() => game.value.final)
 const board = computed(() => game.value.board)
+/** Who answered the clue on screen right: the buzz winner, or everyone right on an all-play or closest clue. */
+const rightNames = computed(() => cur.value?.attempts.filter((a) => a.correct).map((a) => nameOf(a.playerId)).join(', ') ?? '')
 const shown = computed(() => (cur.value ? clueOf(game.value, cur.value) : null))
 const clue = computed(() => shown.value?.clue)
 const categoryName = computed(() => shown.value?.category)
-/** Hints for judging final responses, by player: matches an accepted answer, or close to one. */
-const finalMatches = computed((): Record<string, AnswerMatch> => {
-  const answers = board.value?.final ? allAnswers(board.value.final) : []
-  return Object.fromEntries(Object.entries(final.value?.answers ?? {}).map(([id, text]) => [id, matchAnswer(text, answers)]))
-})
+/** Hints for judging typed answers, by player: matches an accepted answer, or close to one. */
+function matchesFor(texts: Record<string, string | undefined>, item: { answer: string; acceptedAnswers?: string[] } | undefined) {
+  const answers = item ? allAnswers(item) : []
+  return Object.fromEntries(Object.entries(texts).map(([id, text]) => [id, matchAnswer(text ?? '', answers)])) as Record<string, AnswerMatch>
+}
+const finalMatches = computed(() => matchesFor(final.value?.answers ?? {}, board.value?.final))
+const clueMatches = computed(() =>
+  cur.value?.kind === 'allPlay' ? matchesFor(Object.fromEntries(Object.entries(cur.value.answers).map(([id, a]) => [id, a.text])), clue.value) : {},
+)
 const wrongCost = computed(() => (cur.value ? wrongAnswerPoints(game.value.settings, cur.value.value, cur.value.dailyDouble) : 0))
 const nameOf = (id: string | null | undefined) => game.value.players.find((p) => p.id === id)?.name ?? '—'
 const connectedIds = computed(() => new Set(pub.value.players.filter((p) => p.connected).map((p) => p.id)))
@@ -179,7 +185,10 @@ function onKey(event: KeyboardEvent) {
     return event.preventDefault()
   }
   if (!c) return
-  if ((key === ' ' || key === 'b') && (c.status === 'reading' || c.status === 'closed')) act({ type: 'openBuzzers', target: nextTarget() })
+  if (c.kind !== 'buzz' && key === ' ' && c.status === 'reading') act({ type: 'openAnswers', now: Date.now() })
+  else if (key === ' ' && c.status === 'collecting') act({ type: 'closeAnswers' })
+  else if (key === 'enter' && c.status === 'judging') act({ type: 'finishJudging' })
+  else if ((key === ' ' || key === 'b') && (c.status === 'reading' || c.status === 'closed')) act({ type: 'openBuzzers', target: nextTarget() })
   else if (key === 'c' && c.status === 'answering') act({ type: 'judge', correct: true })
   else if (key === 'x' && c.status === 'answering') act({ type: 'judge', correct: false, target: nextTarget() })
   else if (key === 'r' && c.status !== 'revealed') act({ type: 'revealAnswer' })
@@ -439,6 +448,50 @@ onUnmounted(() => {
           <button class="primary" :disabled="cur.ddWager === null" @click="act({ type: 'showDdClue', now: Date.now() })">Show clue</button>
         </div>
 
+        <!-- All-play and closest: everyone answers on their phone -->
+        <div v-else-if="cur.kind !== 'buzz' && cur.status !== 'revealed'" class="stack">
+          <div v-if="cur.status === 'reading'" class="row">
+            <button class="primary big" @click="act({ type: 'openAnswers', now: Date.now() })">Open answers <kbd>Space</kbd></button>
+            <button @click="act({ type: 'revealAnswer' })">Skip – reveal <kbd>R</kbd></button>
+            <span class="muted">
+              {{ cur.kind === 'closest' ? 'Closest number: the nearest guess wins' : 'All-play: every right answer scores, wrong ones cost nothing' }}
+            </span>
+          </div>
+          <div v-else-if="cur.status === 'collecting'" class="row">
+            <span class="waiting">
+              Answering · {{ Math.max(0, Math.ceil(((cur.answerEndsAt ?? 0) - clock) / 1000)) }} s ·
+              {{ Object.keys(cur.answers).length }}/{{ game.players.length }} answered
+            </span>
+            <span class="spacer" />
+            <button class="primary" @click="act({ type: 'closeAnswers' })">
+              {{ cur.kind === 'closest' ? 'Close and score' : 'Close and judge' }} <kbd>Space</kbd>
+            </button>
+          </div>
+          <table v-if="Object.keys(cur.answers).length" class="final-table">
+            <tbody>
+              <tr v-for="(a, id) in cur.answers" :key="id">
+                <td>{{ nameOf(id) }}</td>
+                <td>
+                  {{ a.text ?? a.number }}
+                  <template v-if="cur.status === 'judging'">
+                    <span v-if="clueMatches[id] === 'exact'" class="match ok-note">✓ matches</span>
+                    <span v-else-if="clueMatches[id] === 'close'" class="match warn-note">≈ close</span>
+                  </template>
+                </td>
+                <td v-if="cur.status === 'judging'" class="marks">
+                  <button class="small" :class="{ ok: cur.marks[id] }" @click="act({ type: 'markAnswer', id, correct: true })">✓</button>
+                  <button class="small" :class="{ bad: !cur.marks[id] }" @click="act({ type: 'markAnswer', id, correct: false })">✗</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-if="cur.status === 'judging'" class="row">
+            <span class="muted">Exact matches are ticked already; check the rest.</span>
+            <span class="spacer" />
+            <button class="primary big" @click="act({ type: 'finishJudging' })">Done: score them <kbd>Enter</kbd></button>
+          </div>
+        </div>
+
         <div v-else-if="cur.status === 'reading' || cur.status === 'closed'" class="row">
           <button class="primary big" @click="act({ type: 'openBuzzers', target: nextTarget() })">
             {{ cur.status === 'reading' ? 'Open buzzers' : 'Reopen buzzers' }} <kbd>Space</kbd>
@@ -474,7 +527,7 @@ onUnmounted(() => {
         </div>
 
         <div v-else-if="cur.status === 'revealed'" class="row">
-          <span v-if="cur.correctPlayer">{{ nameOf(cur.correctPlayer) }} got it.</span>
+          <span v-if="rightNames">{{ rightNames }} got it.</span>
           <span v-else class="muted">Nobody got it.</span>
           <span class="spacer" />
           <button class="primary big" @click="act({ type: 'returnToBoard' })">Back to board <kbd>Enter</kbd></button>
@@ -772,6 +825,9 @@ kbd {
 .awards {
   margin: 0;
   padding-left: 1.2em;
+}
+.marks {
+  white-space: nowrap;
 }
 .match {
   font-size: 0.85em;

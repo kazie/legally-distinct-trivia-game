@@ -191,7 +191,11 @@
             {
               "value": 400,
               "clue": "The ship that sank on its maiden voyage in 1912",
-              "answer": "Titanic"
+              "answer": "Titanic",
+              "kind": "allPlay",
+              "acceptedAnswers": [
+                "RMS Titanic"
+              ]
             },
             {
               "value": 800,
@@ -226,7 +230,10 @@
             {
               "value": 800,
               "clue": "The number of keys on a standard piano",
-              "answer": "88"
+              "answer": "88",
+              "kind": "closest",
+              "number": 88,
+              "seconds": 15
             },
             {
               "value": 1200,

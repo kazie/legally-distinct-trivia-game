@@ -259,6 +259,40 @@ describe('story harness renders real screens', () => {
     expect(open.find('.react-row').exists()).toBe(false)
   })
 
+  it('plays an all-play clue: answer on the phone, judge on the host, results on the TV', async () => {
+    const w = await render('All-play: answering', () => [
+      h('div', { class: 'tv' }, [h(BoardView, { room: DEMO_ROOM })]),
+      h('div', { class: 'phone' }, [h(StoryPlayer, { playerId: ANN })]),
+      h(HostView, { room: DEMO_ROOM }),
+    ], false)
+    expect(w.find('.tv').text()).toContain('2 / 3 answered')
+    await w.find('.phone input').setValue('RMS Titanic')
+    await w.find('.phone form').trigger('submit')
+    await settle()
+    expect(w.find('.phone').text()).toContain('Answer received.')
+    expect(w.find('.tv').text()).toContain('3 / 3 answered')
+
+    await w.findAll('button').find((b) => b.text().startsWith('Close and judge'))!.trigger('click')
+    await settle()
+    expect(w.find('.tv').text()).toContain('Checking answers…')
+    const rows = w.findAll('.host .final-table tr')
+    expect(rows.find((r) => r.text().includes('RMS Titanic'))!.text()).toContain('✓ matches')
+    await w.findAll('button').find((b) => b.text().startsWith('Done: score them'))!.trigger('click')
+    await settle()
+    expect(w.findAll('.tv .answers li.win').map((li) => li.text())).toEqual(['✓BobTitanic', '✓AnnRMS Titanic'])
+    expect(w.find('.phone').text()).toContain('You said RMS Titanic: right! +400')
+  })
+
+  it('puts closest guesses on a number line, the winner highlighted', async () => {
+    const w = await render('Closest: revealed', () => [
+      h('div', { class: 'tv' }, [h(BoardView, { room: DEMO_ROOM })]),
+      h('div', { class: 'phone' }, [h(StoryPlayer, { playerId: ANN })]),
+    ])
+    expect(w.find('.tv .mark.answer').text()).toBe('88')
+    expect(w.find('.tv .mark.win').text()).toContain('Ann')
+    expect(w.find('.phone').text()).toContain('You said 90: right!')
+  })
+
   it('lets the host judge from the control panel', async () => {
     const w = await render('Clue: Bob answering', () => [h(HostView, { room: DEMO_ROOM }), h(StoryPlayer, { playerId: BOB })], false)
     const correct = w.findAll('button').find((b) => b.text().startsWith('Correct'))!

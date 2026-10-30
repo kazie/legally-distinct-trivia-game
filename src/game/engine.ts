@@ -1,5 +1,6 @@
-import type { Board, Clue, Final, Media } from '@/content/schema'
+import { DEFAULT_ANSWER_SECONDS, type Board, type Clue, type ClueKind, type Final, type Media } from '@/content/schema'
 import { isBuzzTarget } from './buzzPad'
+import { allAnswers, matchAnswer } from './fuzzy'
 import { blurRevealFor, pauseReveal, resumeReveal, revealValue } from './reveal'
 import { DEFAULT_SETTINGS, falseStartPoints, normalizeSettings, wrongAnswerPoints, type GameSettings } from './settings'
 import type { BuzzWindow, ClueRef, CurrentClue, FalseStart, GameState, Player } from './types'
@@ -39,15 +40,20 @@ export type Action =
   | { type: 'showFinalResponse' }
   | { type: 'judgeFinal'; correct: boolean }
   | { type: 'endGame' }
+  | { type: 'openAnswers'; now: number }
+  | { type: 'setClueAnswer'; id: string; clueId: string; text?: string; number?: number; now: number }
+  | { type: 'closeAnswers' }
+  | { type: 'markAnswer'; id: string; correct: boolean }
+  | { type: 'finishJudging' }
   | { type: 'showNextCategory' }
   | { type: 'showAllCategories' }
   | { type: 'pause'; message: string; until: number | null }
   | { type: 'resume' }
 
-/** Answers that arrive this long after the final timer ran out are still accepted (network slack). */
-export const FINAL_ANSWER_GRACE_MS = 2000
+/** Typed answers that arrive this long after their timer ran out are still accepted (network slack). */
+export const ANSWER_GRACE_MS = 2000
 export const MAX_NAME_LENGTH = 24
-export const MAX_FINAL_ANSWER_LENGTH = 200
+export const MAX_ANSWER_LENGTH = 200
 export const MAX_PAUSE_MESSAGE_LENGTH = 80
 /** The clue id practice buzzes use in `buzzers_open` and `buzz` messages. */
 export const PRACTICE_ID = 'practice'
@@ -90,7 +96,8 @@ export function pickDailyDoubles(board: Board, random: () => number = Math.rando
       category.clues.forEach((clue, i) => {
         const id = clueId({ round: r, category: c, clue: i })
         if (clue.dailyDouble) picks.push(id)
-        else if (i > 0 || category.clues.length === 1) candidates.push(id)
+        // Only buzzer clues can be Daily Doubles: the others are for everyone.
+        else if ((clue.kind ?? 'buzz') === 'buzz' && (i > 0 || category.clues.length === 1)) candidates.push(id)
       }),
     )
     for (let n = 0; n < (round.randomDailyDoubles ?? 0) && candidates.length > 0; n++) {
@@ -142,11 +149,18 @@ export function clueOf(state: GameState, cur: CurrentClue): { category: string; 
   return category && clue ? { category: category.name, clue } : null
 }
 
+function boardClue(s: GameState, ref: ClueRef): Clue | undefined {
+  return s.board?.rounds[ref.round]?.categories[ref.category]?.clues[ref.clue]
+}
+
 /** A clue that just went up, waiting for the host to read it. */
-function newClue(ref: ClueRef, id: string, value: number, media: Media | undefined): CurrentClue {
+function newClue(ref: ClueRef, id: string, value: number, media: Media | undefined, kind: ClueKind = 'buzz'): CurrentClue {
   return {
     ref,
     id,
+    kind,
+    answers: {},
+    marks: {},
     status: 'reading',
     dailyDouble: false,
     value,
@@ -166,6 +180,24 @@ function newClue(ref: ClueRef, id: string, value: number, media: Media | undefin
     photoFinish: null,
     answerEndsAt: null,
   }
+}
+
+/**
+ * Scores the collected answers of an all-play or closest clue: each right one wins the value (wrong ones cost
+ * nothing), and the earliest right answer gets control.
+ */
+function settleAnswers(s: GameState, cur: CurrentClue, correct: (id: string) => boolean) {
+  const inOrder = Object.entries(cur.answers)
+    .filter(([id]) => findPlayer(s, id))
+    .sort(([, a], [, b]) => a.at - b.at)
+  for (const [id] of inOrder) {
+    cur.attempts.push({ playerId: id, correct: correct(id), ms: null })
+    if (correct(id)) findPlayer(s, id)!.score += cur.value
+  }
+  const first = inOrder.find(([id]) => correct(id))
+  if (first) s.control = first[0]
+  cur.status = 'revealed'
+  cur.answerEndsAt = null
 }
 
 /** Files the clue on screen into the game's history, for stats and the results export. */
@@ -280,7 +312,8 @@ export function buzzWindowId(s: GameState): string | null {
 
 function windowFor(s: GameState, id: string): BuzzWindow | null {
   if (id !== buzzWindowId(s)) return null
-  return id === PRACTICE_ID ? s.practice : s.current
+  if (id === PRACTICE_ID) return s.practice
+  return s.current?.kind === 'buzz' ? s.current : null
 }
 
 /**
@@ -434,12 +467,13 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       if (s.phase !== 'board' || cur || !s.board || s.categoriesShown !== null || s.pause) return false
       const { ref } = action
       if (ref.round !== s.round) return false
-      const clue = s.board.rounds[ref.round]?.categories[ref.category]?.clues[ref.clue]
+      const clue = boardClue(s, ref)
       const id = clueId(ref)
       if (!clue || s.used.includes(id)) return false
-      const dailyDouble = s.dailyDoubles.includes(id)
+      const kind = clue.kind ?? 'buzz'
+      const dailyDouble = kind === 'buzz' && s.dailyDoubles.includes(id)
       s.phase = 'clue'
-      s.current = newClue(ref, id, clue.value, clue.media)
+      s.current = newClue(ref, id, clue.value, clue.media, kind)
       if (dailyDouble) {
         s.current.status = 'dd_wager'
         s.current.dailyDouble = true
@@ -448,7 +482,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
         if (s.current.reveal) s.current.reveal.shrinkPoints = false
       }
       // Quick draw: no waiting for the host to read, buzzers open with the clue.
-      if (!dailyDouble && s.settings.openMode === 'instant' && action.target !== undefined && isBuzzTarget(action.target)) {
+      if (kind === 'buzz' && !dailyDouble && s.settings.openMode === 'instant' && action.target !== undefined && isBuzzTarget(action.target)) {
         openWindow(s, s.current, action.target)
       }
       return true
@@ -476,7 +510,7 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       return true
 
     case 'openBuzzers':
-      if (!cur || cur.dailyDouble || (cur.status !== 'reading' && cur.status !== 'closed')) return false
+      if (!cur || cur.kind !== 'buzz' || cur.dailyDouble || (cur.status !== 'reading' && cur.status !== 'closed')) return false
       if (!isBuzzTarget(action.target)) return false
       openWindow(s, cur, action.target)
       cur.buzzWinner = null
@@ -614,8 +648,8 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
     case 'setFinalAnswer': {
       const f = s.final
       if (s.phase !== 'final_answer' || !f?.eligible.includes(action.id)) return false
-      if (f.answerEndsAt !== null && action.now > f.answerEndsAt + FINAL_ANSWER_GRACE_MS) return false
-      f.answers[action.id] = action.text.trim().slice(0, MAX_FINAL_ANSWER_LENGTH)
+      if (f.answerEndsAt !== null && action.now > f.answerEndsAt + ANSWER_GRACE_MS) return false
+      f.answers[action.id] = action.text.trim().slice(0, MAX_ANSWER_LENGTH)
       return true
     }
 
@@ -655,6 +689,53 @@ function apply(s: GameState, cur: CurrentClue | null, action: Action): boolean {
       f.responseShown = false
       return true
     }
+
+    case 'openAnswers':
+      if (cur?.status !== 'reading' || cur.kind === 'buzz') return false
+      cur.status = 'collecting'
+      cur.answerEndsAt = action.now + (boardClue(s, cur.ref)?.seconds ?? DEFAULT_ANSWER_SECONDS) * 1000
+      return true
+
+    case 'setClueAnswer': {
+      if (cur?.status !== 'collecting' || cur.id !== action.clueId || !findPlayer(s, action.id)) return false
+      if (cur.answerEndsAt !== null && action.now > cur.answerEndsAt + ANSWER_GRACE_MS) return false
+      if (cur.kind === 'closest') {
+        if (action.number === undefined || !Number.isFinite(action.number)) return false
+        cur.answers[action.id] = { number: action.number, at: action.now }
+      } else {
+        const text = action.text?.trim().slice(0, MAX_ANSWER_LENGTH)
+        if (!text) return false
+        cur.answers[action.id] = { text, at: action.now }
+      }
+      return true
+    }
+
+    case 'closeAnswers': {
+      const clue = cur && boardClue(s, cur.ref)
+      if (cur?.status !== 'collecting' || !clue) return false
+      if (cur.kind === 'closest') {
+        // Closest wins, ties share: no judging needed.
+        const miss = (id: string) => Math.abs(cur.answers[id]!.number! - clue.number!)
+        const best = Math.min(...Object.keys(cur.answers).filter((id) => findPlayer(s, id)).map(miss))
+        settleAnswers(s, cur, (id) => miss(id) === best)
+      } else {
+        // Exact matches start ticked; the host checks the rest.
+        cur.status = 'judging'
+        cur.answerEndsAt = null
+        for (const [id, a] of Object.entries(cur.answers)) cur.marks[id] = matchAnswer(a.text ?? '', allAnswers(clue)) === 'exact'
+      }
+      return true
+    }
+
+    case 'markAnswer':
+      if (cur?.status !== 'judging' || !cur.answers[action.id]) return false
+      cur.marks[action.id] = action.correct
+      return true
+
+    case 'finishJudging':
+      if (cur?.status !== 'judging') return false
+      settleAnswers(s, cur, (id) => cur.marks[id] ?? false)
+      return true
 
     case 'showNextCategory': {
       const count = s.board?.rounds[s.round]?.categories.length ?? 0

@@ -194,6 +194,32 @@ function gameOver(): GameState {
   return reduce(s, { type: 'endGame' })
 }
 
+/** Round 2, History 400 (all-play): answers are open, Bob and Cid already sent theirs. */
+const ALL_PLAY_ID = '1-0-0'
+function allPlay(): GameState {
+  const now = Date.now()
+  return run(midRound(), [
+    { type: 'endRound' },
+    { type: 'selectClue', ref: { round: 1, category: 0, clue: 0 } },
+    { type: 'openAnswers', now },
+    { type: 'setClueAnswer', id: BOB, clueId: ALL_PLAY_ID, text: 'Titanic', now: now + 3000 },
+    { type: 'setClueAnswer', id: CID, clueId: ALL_PLAY_ID, text: 'The Lusitania', now: now + 5000 },
+  ])
+}
+
+/** Round 2, Music 800 (closest number, 88 keys): Bob guessed 76 and Cid 100. */
+const CLOSEST_ID = '1-1-1'
+function closest(): GameState {
+  const now = Date.now()
+  return run(midRound(), [
+    { type: 'endRound' },
+    { type: 'selectClue', ref: { round: 1, category: 1, clue: 1 } },
+    { type: 'openAnswers', now },
+    { type: 'setClueAnswer', id: BOB, clueId: CLOSEST_ID, number: 76, now: now + 2000 },
+    { type: 'setClueAnswer', id: CID, clueId: CLOSEST_ID, number: 100, now: now + 4000 },
+  ])
+}
+
 /** The host ends the game with Ann and Bob tied for first: they buzz for the tie-breaker, Cid watches. */
 function tiebreak(): GameState {
   return run(midRound(), [{ type: 'adjustScore', id: BOB, delta: 800 }, { type: 'endGame' }])
@@ -254,6 +280,22 @@ export const scenarios = {
   'Clue: Ann answering': () => ({ state: answering(ANN) }),
   'Clue: Bob was wrong': () => ({ state: run(answering(BOB), [{ type: 'judge', correct: false }]) }),
   'Clue: revealed': () => ({ state: run(answering(ANN), [{ type: 'judge', correct: true }]) }),
+  'All-play: answering': () => ({ state: allPlay() }),
+  'All-play: judging': () => ({
+    state: run(allPlay(), [{ type: 'setClueAnswer', id: ANN, clueId: ALL_PLAY_ID, text: 'titanik', now: Date.now() }, { type: 'closeAnswers' }]),
+  }),
+  'All-play: revealed': () => ({
+    state: run(allPlay(), [
+      { type: 'setClueAnswer', id: ANN, clueId: ALL_PLAY_ID, text: 'titanik', now: Date.now() },
+      { type: 'closeAnswers' },
+      { type: 'markAnswer', id: ANN, correct: true },
+      { type: 'finishJudging' },
+    ]),
+  }),
+  'Closest: answering': () => ({ state: closest() }),
+  'Closest: revealed': () => ({
+    state: run(closest(), [{ type: 'setClueAnswer', id: ANN, clueId: CLOSEST_ID, number: 90, now: Date.now() }, { type: 'closeAnswers' }]),
+  }),
   'Daily Double: wager': () => ({
     state: run(midRound(), [{ type: 'selectClue', ref: { round: 0, category: 1, clue: 3 } }]),
   }),

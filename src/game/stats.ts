@@ -16,19 +16,21 @@ export interface PlayerStats {
 const winnerOf = (result: ClueResult) => result.attempts.find((a) => a.correct)?.playerId ?? null
 
 /**
- * Clues won in a row, now and at best. Winning a clue extends your streak and ends everyone else's; a wrong
- * answer ends yours. Clues nobody got don't change anything.
+ * Clues won in a row, now and at best. Winning a clue extends your streak and ends everyone else's (on an
+ * all-play clue, everyone right wins it); a wrong answer ends yours. Clues nobody got don't change anything.
  */
 export function streaks(history: ClueResult[]): { current: Record<string, number>; best: Record<string, number> } {
   const current: Record<string, number> = {}
   const best: Record<string, number> = {}
   for (const result of history) {
+    const winners = new Set(result.attempts.filter((a) => a.correct).map((a) => a.playerId))
     for (const a of result.attempts) if (!a.correct) current[a.playerId] = 0
-    const winner = winnerOf(result)
-    if (!winner) continue
-    for (const id of Object.keys(current)) if (id !== winner) current[id] = 0
-    current[winner] = (current[winner] ?? 0) + 1
-    best[winner] = Math.max(best[winner] ?? 0, current[winner])
+    if (!winners.size) continue
+    for (const id of Object.keys(current)) if (!winners.has(id)) current[id] = 0
+    for (const id of winners) {
+      current[id] = (current[id] ?? 0) + 1
+      best[id] = Math.max(best[id] ?? 0, current[id])
+    }
   }
   return { current, best }
 }

@@ -103,6 +103,19 @@ function publicCurrent(state: GameState): PublicCurrentClue | null {
     falseStarts: falseStartsOn(state, cur.id),
     buzzOrder: cur.buzzOrder,
     answerEndsAt: cur.answerEndsAt,
+    kind: cur.kind,
+    answered: Object.keys(cur.answers),
+    // Everyone's answers stay secret until the reveal, so nobody copies.
+    results:
+      cur.status === 'revealed' && cur.kind !== 'buzz'
+        ? Object.entries(cur.answers).map(([playerId, a]) => ({
+            playerId,
+            text: a.text ?? null,
+            number: a.number ?? null,
+            correct: cur.attempts.some((t) => t.playerId === playerId && t.correct),
+          }))
+        : null,
+    number: cur.status === 'revealed' && 'number' in clue ? (clue.number ?? null) : null,
   }
 }
 

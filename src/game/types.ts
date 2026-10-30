@@ -1,4 +1,4 @@
-import type { Board, Media } from '@/content/schema'
+import type { Board, ClueKind, Media } from '@/content/schema'
 import type { BlurReveal } from './reveal'
 import type { GameSettings } from './settings'
 
@@ -29,9 +29,18 @@ export type Phase =
 
 /**
  * Life cycle of the clue on screen:
- * dd_wager → answering (Daily Double), or reading → opening → open → answering → (closed → opening …) → revealed.
+ * - buzz: dd_wager → answering (Daily Double), or reading → opening → open → answering → (closed → opening …) → revealed.
+ * - all-play: reading → collecting → judging → revealed. Closest: reading → collecting → revealed.
  */
-export type ClueStatus = 'dd_wager' | 'reading' | 'opening' | 'open' | 'answering' | 'closed' | 'revealed'
+export type ClueStatus = 'dd_wager' | 'reading' | 'opening' | 'open' | 'answering' | 'closed' | 'collecting' | 'judging' | 'revealed'
+
+/** A player's typed answer (all-play) or guess (closest). */
+export interface ClueAnswer {
+  text?: string
+  number?: number
+  /** Host time it arrived; the earliest right one gets control. */
+  at: number
+}
 
 /** Buzzers that open with an emoji to tap: the clue on screen, or a practice buzz in the intro. */
 export interface BuzzWindow {
@@ -113,8 +122,13 @@ export interface CurrentClue extends BuzzWindow {
   buzzOrder: BuzzTime[]
   attempts: Attempt[]
   photoFinish: PhotoFinish | null
-  /** Host time the answer timer runs out, while someone answers with the timer on. */
+  /** Host time the answer timer runs out: while someone answers (with the timer on), or while collecting answers. */
   answerEndsAt: number | null
+  kind: ClueKind
+  /** All-play and closest clues: answers by player. */
+  answers: Record<string, ClueAnswer>
+  /** All-play judging: the host's ticks, by player. */
+  marks: Record<string, boolean>
 }
 
 export interface FinalState {
@@ -224,6 +238,20 @@ export interface PublicCurrentClue {
   /** Winner first, then runner-ups (photo finish). */
   buzzOrder: BuzzTime[]
   answerEndsAt: number | null
+  kind: ClueKind
+  /** All-play and closest: who has answered (while collecting and judging). */
+  answered: string[]
+  /** Everyone's answers with the result, once revealed. */
+  results: PublicClueAnswer[] | null
+  /** The right number of a closest clue, once revealed. */
+  number: number | null
+}
+
+export interface PublicClueAnswer {
+  playerId: string
+  text: string | null
+  number: number | null
+  correct: boolean
 }
 
 export interface PublicFinal {
