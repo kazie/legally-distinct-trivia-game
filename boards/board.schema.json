@@ -489,6 +489,10 @@
         "clue",
         "answer"
       ]
+    },
+    "credit": {
+      "type": "string",
+      "minLength": 1
     }
   },
   "required": [

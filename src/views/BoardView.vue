@@ -140,6 +140,7 @@ onUnmounted(() => {
         <p class="join">Scan or go to <strong>{{ joinUrl }}</strong></p>
         <p class="code serif">Room <span class="gold">{{ room }}</span></p>
         <p v-if="onLocalhost" class="muted">Tip: open this page via your LAN IP so phones can reach it.</p>
+        <p v-if="state.credit" class="muted">{{ state.credit }}</p>
       </div>
     </section>
 

@@ -3,11 +3,13 @@ import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import BoardGrid from '@/components/BoardGrid.vue'
 import ClueExtras from '@/components/ClueExtras.vue'
 import ConnectionBadge from '@/components/ConnectionBadge.vue'
+import InstantBoard from '@/components/InstantBoard.vue'
 import JoinQr from '@/components/JoinQr.vue'
 import MediaCheck from '@/components/MediaCheck.vue'
 import { BUZZ_EMOJIS, formatCountdown, formatSeconds, photoFinishText, pickBuzzTarget } from '@/game/buzzPad'
-import { allBoards, downloadCsv, downloadJson, type BoardEntry } from '@/content/boards'
+import { allBoards, downloadCsv, downloadJson, saveDraft, type BoardEntry } from '@/content/boards'
 import { lintBoard } from '@/content/lint'
+import type { Board } from '@/content/schema'
 import { clueOf, ddMaxWager, pickDailyDoubles, TIEBREAK_ID, type Action } from '@/game/engine'
 import { allAnswers, matchAnswer, type AnswerMatch } from '@/game/fuzzy'
 import { HostController } from '@/game/hostController'
@@ -98,6 +100,14 @@ function act(action: Action) {
 function loadSelectedBoard() {
   const entry = boards.value.find((b) => `${b.source}:${b.id}` === selectedBoardKey.value)
   if (entry?.board) act({ type: 'loadBoard', board: entry.board, dailyDoubles: pickDailyDoubles(entry.board) })
+}
+
+/** A fresh Open Trivia DB board: kept as an editor draft (to tweak or replay) and loaded right away. */
+function loadInstantBoard(board: Board) {
+  saveDraft(board.id, board)
+  boards.value = allBoards()
+  selectedBoardKey.value = `draft:${board.id}`
+  act({ type: 'loadBoard', board, dailyDoubles: pickDailyDoubles(board) })
 }
 
 function startGame() {
@@ -241,6 +251,7 @@ onUnmounted(() => {
               </select>
             </label>
             <div class="row">
+              <InstantBoard @ready="loadInstantBoard" />
               <button class="small ghost" @click="boards = allBoards()">Refresh list</button>
               <RouterLink class="btn small ghost" :to="{ name: 'editor' }" target="_blank">Open editor ↗</RouterLink>
             </div>

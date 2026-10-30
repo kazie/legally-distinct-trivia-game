@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { REACTIONS } from '@/game/reactions'
 import type { PublicState } from '@/game/types'
 
-export const PROTOCOL_VERSION = 8
+export const PROTOCOL_VERSION = 9
 
 const id = z.string().min(1).max(64)
 const base = { v: z.literal(PROTOCOL_VERSION) }

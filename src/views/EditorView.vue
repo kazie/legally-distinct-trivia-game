@@ -5,6 +5,7 @@ import { allBoards, deleteDraft, downloadJson, loadDrafts, saveDraft, type Board
 import MediaCheck from '@/components/MediaCheck.vue'
 import MediaFields from '@/components/MediaFields.vue'
 import AnswerFields from '@/components/AnswerFields.vue'
+import InstantBoard from '@/components/InstantBoard.vue'
 import SingleClueFields from '@/components/SingleClueFields.vue'
 import { lintBoard } from '@/content/lint'
 import { boardToLink, fetchBoard, linkToBoard, LONG_LINK_CHARS, SHARE_HASH } from '@/content/share'
@@ -260,6 +261,12 @@ function removeRow() {
   selected.value = null
 }
 
+function setCredit(raw: string) {
+  if (!draft.value) return
+  if (raw.trim() === '') delete draft.value.credit
+  else draft.value.credit = raw
+}
+
 /** Buzzer clues keep the JSON tidy (no `kind`); only they can be Daily Doubles. */
 function setKind(clue: Clue, kind: ClueKind) {
   if (kind === 'buzz') {
@@ -350,6 +357,7 @@ function applyJson() {
         </label>
         <button class="small" @click="importUrl">Import from URL</button>
       </div>
+      <InstantBoard options @ready="importRaw" />
       <p v-if="importError" class="error">{{ importError }}</p>
       <RouterLink
         v-for="b in boards"
@@ -379,6 +387,14 @@ function applyJson() {
           <label class="grow">Title <input v-model="draft.title" /></label>
           <label>Id <input v-model.trim="draft.id" /></label>
         </div>
+        <label>
+          Credit (optional, shown on the TV before the game)
+          <input
+            :value="draft.credit ?? ''"
+            placeholder="e.g. Questions by the Smith family"
+            @input="setCredit(($event.target as HTMLInputElement).value)"
+          />
+        </label>
         <div class="row">
           <span v-if="issues.length === 0" class="pill ok">Valid – ready to play</span>
           <span v-else class="pill bad">{{ issues.length }} problem(s)</span>

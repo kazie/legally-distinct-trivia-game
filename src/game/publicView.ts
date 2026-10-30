@@ -15,6 +15,7 @@ export function toPublicState(state: GameState, now: number): PublicState {
   return {
     roomCode: state.roomCode,
     title: board?.title ?? null,
+    credit: board?.credit ?? null,
     hasFinal: !!board?.final,
     phase: state.phase,
     round:

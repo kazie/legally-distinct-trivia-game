@@ -3,6 +3,7 @@
  * so they stay valid when the engine changes.
  */
 import sample from '../../boards/sample.json'
+import { CREDIT } from '@/content/opentdb'
 import { BoardSchema } from '@/content/schema'
 import { clueId, createGame, PRACTICE_ID, reduce, TIEBREAK_ID, type Action } from '@/game/engine'
 import type { GameSettings } from '@/game/settings'
@@ -241,6 +242,7 @@ function finalAnswer(): GameState {
 export const scenarios = {
   'Lobby (empty)': () => ({ state: lobby(false) }),
   Lobby: () => ({ state: lobby() }),
+  'Lobby: credited board': () => ({ state: lobby(true, { ...board, credit: CREDIT }) }),
   Intro: () => ({ state: intro() }),
   'Intro: emoji pad': () => ({ state: intro(EMOJI) }),
   'Intro: quick draw': () => ({ state: intro(QUICK_DRAW) }),
