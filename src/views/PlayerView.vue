@@ -8,6 +8,8 @@ import { safeMedia } from '@/content/schema'
 import { formatSeconds } from '@/game/buzzPad'
 import { ClientController } from '@/game/clientController'
 import { falseStartPoints, formatLockout } from '@/game/settings'
+import { useWakeLock } from '@/composables/useWakeLock'
+import { ignoreHotkey } from '@/keys'
 import { useBridge } from '@/net/useBridge'
 import { LAST_NAME_KEY, useStorages } from '@/storage'
 
@@ -59,6 +61,8 @@ const audioSrc = computed(() => {
 })
 /** The target strip above the pad, when phones show the emoji too. */
 const padTarget = computed(() => (emojiOnPhones.value ? phoneTarget.value : undefined))
+
+useWakeLock()
 
 function join() {
   local?.setItem(LAST_NAME_KEY, nameInput.value.trim())
@@ -153,7 +157,7 @@ watch(
 
 /** Keys 1–9 tap the pad row by row, Space presses the big button (handy when testing on a laptop). */
 function onKey(event: KeyboardEvent) {
-  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
+  if (ignoreHotkey(event)) return
   if (event.repeat || cur.value?.dailyDouble || (phase.value !== 'clue' && phase.value !== 'intro')) return
   if (bigButton.value) {
     if (event.code !== 'Space' && !/^(Digit|Numpad)[1-9]$/.test(event.code)) return

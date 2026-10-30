@@ -8,6 +8,8 @@ import Scoreboard from '@/components/Scoreboard.vue'
 import { BUZZ_EMOJIS, formatSeconds } from '@/game/buzzPad'
 import { ClientController } from '@/game/clientController'
 import { DEFAULT_SETTINGS, formatLockout } from '@/game/settings'
+import { useWakeLock } from '@/composables/useWakeLock'
+import { ignoreHotkey } from '@/keys'
 import { useBridge } from '@/net/useBridge'
 import { beep } from '@/sound'
 
@@ -47,8 +49,30 @@ watch(
   },
 )
 
-onMounted(() => client.start())
-onUnmounted(() => client.stop())
+useWakeLock()
+
+const canFullscreen = !!document.documentElement.requestFullscreen
+const fullscreen = ref(!!document.fullscreenElement)
+function toggleFullscreen() {
+  if (document.fullscreenElement) void document.exitFullscreen().catch(() => {})
+  else void document.documentElement.requestFullscreen().catch(() => {})
+}
+const onFullscreenChange = () => (fullscreen.value = !!document.fullscreenElement)
+function onKey(event: KeyboardEvent) {
+  if (ignoreHotkey(event) || event.key.toLowerCase() !== 'f' || event.repeat) return
+  if (canFullscreen) toggleFullscreen()
+}
+
+onMounted(() => {
+  client.start()
+  document.addEventListener('fullscreenchange', onFullscreenChange)
+  window.addEventListener('keydown', onKey)
+})
+onUnmounted(() => {
+  client.stop()
+  document.removeEventListener('fullscreenchange', onFullscreenChange)
+  window.removeEventListener('keydown', onKey)
+})
 </script>
 
 <template>
@@ -60,6 +84,14 @@ onUnmounted(() => client.stop())
       <span class="muted">Join at <strong>{{ joinUrl }}</strong> · room <strong class="gold">{{ room }}</strong></span>
       <button class="ghost small" :title="soundOn ? 'Sound on' : 'Sound off'" @click="soundOn = !soundOn">
         {{ soundOn ? '🔊' : '🔇' }}
+      </button>
+      <button
+        v-if="canFullscreen"
+        class="ghost small"
+        :title="fullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'"
+        @click="toggleFullscreen"
+      >
+        {{ fullscreen ? '🗗' : '⛶' }}
       </button>
       <ConnectionBadge :status="connection" :host-online="hostOnline" />
     </header>
@@ -104,7 +136,10 @@ onUnmounted(() => client.stop())
             Careful: the clue <strong>disappears</strong> the moment someone buzzes.
             <span class="muted">Buzz early and you answer from memory!</span>
           </li>
-          <li>The fastest player answers out loud. Right wins the points, wrong loses them and locks you out.</li>
+          <li>
+            The fastest player answers out loud. Right wins the points, wrong
+            {{ settings.wrongAnswerPenalty ? 'loses them and locks' : 'locks' }} you out.
+          </li>
           <li>A <span class="gold">Daily Double</span> is for the player in control only, who wagers first.</li>
           <li v-if="state.hasFinal">The game ends with a final round: everyone with points wagers and writes an answer.</li>
         </ol>

@@ -91,6 +91,17 @@ export interface BoardIssue {
   message: string
 }
 
+/** Issue path of one clue, as validation reports it: `rounds.0.categories.2.clues.4`. */
+export function cluePath(round: number, category: number, clue: number): string {
+  return `rounds.${round}.categories.${category}.clues.${clue}`
+}
+
+/** The clue an issue path points at (or inside), if any. */
+export function parseCluePath(path: string): { round: number; category: number; clue: number } | null {
+  const match = /^rounds\.(\d+)\.categories\.(\d+)\.clues\.(\d+)(?:\.|$)/.exec(path)
+  return match ? { round: Number(match[1]), category: Number(match[2]), clue: Number(match[3]) } : null
+}
+
 export type BoardValidation = { ok: true; board: Board } | { ok: false; issues: BoardIssue[] }
 
 export function validateBoard(input: unknown): BoardValidation {

@@ -5,10 +5,13 @@ import ConnectionBadge from '@/components/ConnectionBadge.vue'
 import JoinQr from '@/components/JoinQr.vue'
 import { BUZZ_EMOJIS, formatSeconds, pickBuzzTarget } from '@/game/buzzPad'
 import { allBoards, type BoardEntry } from '@/content/boards'
+import { lintBoard } from '@/content/lint'
 import { ddMaxWager, pickDailyDoubles, type Action } from '@/game/engine'
 import { HostController } from '@/game/hostController'
 import { toPublicState } from '@/game/publicView'
-import { formatLockout, LOCKOUT_CHOICES, normalizeSettings, PENALTY_CHOICES, type GameSettings } from '@/game/settings'
+import { formatLockout, LOCKOUT_CHOICES, normalizeSettings, PENALTY_CHOICES, wrongAnswerPoints, type GameSettings } from '@/game/settings'
+import { useWakeLock } from '@/composables/useWakeLock'
+import { ignoreHotkey } from '@/keys'
 import { useBridge } from '@/net/useBridge'
 import type { ConnectionStatus } from '@/net/bridgeClient'
 import { EMOJI_ON_PHONES_KEY, LAST_HOST_ROOM_KEY, SETTINGS_KEY, SHOW_INTRO_KEY, useStorages } from '@/storage'
@@ -30,6 +33,8 @@ const wagerInput = ref<number | null>(null)
 const adjust = ref<Record<string, number | null>>({})
 const showIntro = ref(local?.getItem(SHOW_INTRO_KEY) !== 'false')
 const settings = ref<GameSettings>(loadSettings())
+// The host tab runs the game: if it sleeps, every screen stalls.
+useWakeLock()
 
 /** The host's last choices, or the defaults (keeping the old emoji-on-phones checkbox if that's all there is). */
 function loadSettings(): GameSettings {
@@ -61,10 +66,13 @@ const categoryName = computed(() => {
   const c = cur.value
   return c ? board.value?.rounds[c.ref.round]?.categories[c.ref.category]?.name : undefined
 })
+const wrongCost = computed(() => (cur.value ? wrongAnswerPoints(game.value.settings, cur.value.value, cur.value.dailyDouble) : 0))
 const nameOf = (id: string | null | undefined) => game.value.players.find((p) => p.id === id)?.name ?? '—'
 const connectedIds = computed(() => new Set(pub.value.players.filter((p) => p.connected).map((p) => p.id)))
 const judgingId = computed(() => final.value?.order[final.value.index] ?? null)
 const practice = computed(() => game.value.practice)
+/** Heads-ups for the board the game actually holds (only shown in the lobby, so only linted there). */
+const headsUps = computed(() => (game.value.phase === 'lobby' && board.value ? lintBoard(board.value).length : 0))
 
 function boardSource(id: string) {
   return allBoards().find((b) => b.id === id)?.source ?? 'repo'
@@ -124,8 +132,7 @@ function copy(text: string) {
 }
 
 function onKey(event: KeyboardEvent) {
-  const target = event.target as HTMLElement
-  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || event.metaKey || event.ctrlKey || event.altKey) return
+  if (ignoreHotkey(event)) return
   const c = cur.value
   const key = event.key.toLowerCase()
   if (key === 'z') return host.undo()
@@ -199,6 +206,9 @@ onUnmounted(() => {
               >
               <template v-if="board.final"> · final round</template>
               · {{ game.dailyDoubles.length }} Daily Double(s)
+              <div v-if="headsUps" class="warn-note">
+                ⚠ {{ headsUps }} heads-up(s) in this board (giveaways, duplicates or long text): see the editor.
+              </div>
             </div>
             <p class="muted">Players join at <a :href="joinUrl" target="_blank">{{ joinUrl }}</a> with code <strong>{{ room }}</strong>.</p>
             <label class="check">
@@ -253,6 +263,10 @@ onUnmounted(() => {
                 <template v-else>Pressing before you open the buzzers is a false start.</template>
               </p>
             </fieldset>
+            <label class="check">
+              <input v-model="settings.wrongAnswerPenalty" type="checkbox" />
+              Wrong answers cost points (turn off for kids or casual games)
+            </label>
             <button class="primary" :disabled="!board" @click="startGame">
               Start game with {{ game.players.length }} player(s)
             </button>
@@ -371,7 +385,7 @@ onUnmounted(() => {
           <div class="row">
             <button class="ok big" @click="act({ type: 'judge', correct: true })">Correct +{{ cur.value }} <kbd>C</kbd></button>
             <button class="bad big" @click="act({ type: 'judge', correct: false, target: nextTarget() })">
-              Incorrect −{{ cur.value }} <kbd>X</kbd>
+              Incorrect{{ wrongCost ? ` −${wrongCost}` : '' }} <kbd>X</kbd>
             </button>
           </div>
         </div>

@@ -64,6 +64,6 @@ const list = computed(() => (props.sorted ? [...props.players].sort((a, b) => b.
   font-size: 1.5em;
 }
 .negative {
-  color: #ff8c8f;
+  color: var(--bad-text);
 }
 </style>

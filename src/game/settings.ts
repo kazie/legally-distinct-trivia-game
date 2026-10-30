@@ -12,6 +12,8 @@ export interface GameSettings {
   lockoutMs: number
   /** Phones show the emoji to tap too, so remote players watching a delayed stream of the TV aren't behind. */
   emojiOnPhones: boolean
+  /** A wrong answer costs the clue's value. Off for kids or casual games; Daily Double and final wagers always count. */
+  wrongAnswerPenalty: boolean
 }
 
 export const PENALTY_CHOICES = [0, 0.25, 0.5, 1] as const
@@ -23,6 +25,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   falseStartPenalty: 0.5,
   lockoutMs: 1000,
   emojiOnPhones: false,
+  wrongAnswerPenalty: true,
 }
 
 function pick<T>(value: unknown, choices: readonly T[], fallback: T): T {
@@ -39,12 +42,18 @@ export function normalizeSettings(raw: unknown): GameSettings {
     falseStartPenalty: pick(r.falseStartPenalty, PENALTY_CHOICES, d.falseStartPenalty as (typeof PENALTY_CHOICES)[number]),
     lockoutMs: pick(r.lockoutMs, LOCKOUT_CHOICES, d.lockoutMs as (typeof LOCKOUT_CHOICES)[number]),
     emojiOnPhones: typeof r.emojiOnPhones === 'boolean' ? r.emojiOnPhones : d.emojiOnPhones,
+    wrongAnswerPenalty: typeof r.wrongAnswerPenalty === 'boolean' ? r.wrongAnswerPenalty : d.wrongAnswerPenalty,
   }
 }
 
 /** Points a false start costs on a clue worth `value`. */
 export function falseStartPoints(settings: GameSettings, value: number): number {
   return Math.round(value * settings.falseStartPenalty)
+}
+
+/** Points a wrong answer costs. Daily Double wagers are always at stake, like the final round's. */
+export function wrongAnswerPoints(settings: GameSettings, value: number, dailyDouble: boolean): number {
+  return settings.wrongAnswerPenalty || dailyDouble ? value : 0
 }
 
 /** E.g. `1 s`, `0.25 s`. */
