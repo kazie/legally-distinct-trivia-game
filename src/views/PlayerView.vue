@@ -50,7 +50,13 @@ const isMe = (id: string | null | undefined) => !!id && id === client.playerId
 const controlName = computed(() => client.nameOf(state.value?.control ?? null))
 const eligibleForFinal = computed(() => final.value?.eligible.includes(client.playerId) ?? false)
 const finalRemaining = computed(() => client.remainingMs(final.value?.answerEndsAt ?? null))
-const ranking = computed(() => [...(state.value?.players ?? [])].sort((a, b) => b.score - a.score))
+const gameOver = computed(() => state.value?.gameOver ?? null)
+const myRank = computed(() => gameOver.value?.ranking.find((r) => isMe(r.playerId)) ?? null)
+const winners = computed(() => gameOver.value?.ranking.filter((r) => r.rank === 1).map((r) => client.nameOf(r.playerId)) ?? [])
+const myAwards = computed(() => gameOver.value?.awards.filter((a) => a.playerIds.some(isMe)) ?? [])
+const answerLeft = computed(() => client.remainingMs(cur.value?.answerEndsAt ?? null))
+/** "Say your answer", with the seconds left when the host uses an answer timer. */
+const answerPrompt = computed(() => (answerLeft.value === null ? 'Say your answer' : `Say your answer · ${Math.ceil(answerLeft.value / 1000)} s`))
 const emojiOnPhones = computed(() => settings.value.emojiOnPhones)
 const bigButton = computed(() => settings.value.buzzStyle === 'button')
 const quickDraw = computed(() => settings.value.openMode === 'instant')
@@ -124,7 +130,7 @@ const pad = computed((): { mode: BuzzPadMode; label: string | null; sublabel: st
     if (!c || c.status === 'revealed') return { mode: 'done', label: null, sublabel: null }
     if (c.status === 'answering') {
       return isMe(c.buzzWinner)
-        ? { mode: 'mine', label: "YOU'RE UP!", sublabel: 'Say your answer' }
+        ? { mode: 'mine', label: "YOU'RE UP!", sublabel: answerPrompt.value }
         : { mode: 'answering', label: buzzWinnerName.value, sublabel: 'is answering' }
     }
     if (c.lockedOut.includes(client.playerId)) return { mode: 'locked', label: 'Locked out', sublabel: null }
@@ -277,7 +283,7 @@ onUnmounted(() => {
         </div>
 
         <div v-else-if="cur.dailyDouble && cur.status === 'answering'" class="answering" :class="{ mine: isMe(cur.buzzWinner) }">
-          <template v-if="isMe(cur.buzzWinner)">YOU'RE UP!<small>Say your answer</small></template>
+          <template v-if="isMe(cur.buzzWinner)">YOU'RE UP!<small>{{ answerPrompt }}</small></template>
           <template v-else>{{ buzzWinnerName }}<small>is answering</small></template>
         </div>
 
@@ -357,12 +363,15 @@ onUnmounted(() => {
         </template>
       </div>
 
-      <div v-else-if="phase === 'game_over'" class="panel center stack">
+      <div v-else-if="phase === 'game_over' && gameOver" class="panel center stack">
         <h2>Game over</h2>
-        <p class="big gold">
-          {{ ranking[0]?.id === client.playerId ? 'You win!' : `${ranking[0]?.name} wins!` }}
-        </p>
-        <p class="muted">You finished #{{ ranking.findIndex((p) => p.id === client.playerId) + 1 }} of {{ ranking.length }}.</p>
+        <p class="big gold">{{ myRank?.rank === 1 ? 'You win!' : `${winners.join(' & ')} ${winners.length > 1 ? 'win' : 'wins'}!` }}</p>
+        <p v-if="myRank" class="muted">You finished #{{ myRank.rank }} of {{ gameOver.ranking.length }}.</p>
+        <ul v-if="myAwards.length" class="my-awards">
+          <li v-for="a in myAwards" :key="a.key">
+            {{ a.emoji }} <strong class="gold">{{ a.title }}</strong> <span class="muted">{{ a.detail }}</span>
+          </li>
+        </ul>
       </div>
 
       <Scoreboard class="scores" :players="state.players" :control="state.control" :me="client.playerId" sorted />
@@ -442,5 +451,12 @@ onUnmounted(() => {
 }
 .scores {
   margin-top: auto;
+}
+.my-awards {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.3rem;
 }
 </style>

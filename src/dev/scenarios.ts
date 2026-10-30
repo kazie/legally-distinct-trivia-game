@@ -4,7 +4,7 @@
  */
 import sample from '../../boards/sample.json'
 import { BoardSchema } from '@/content/schema'
-import { createGame, PRACTICE_ID, reduce, type Action } from '@/game/engine'
+import { clueId, createGame, PRACTICE_ID, reduce, type Action } from '@/game/engine'
 import type { GameSettings } from '@/game/settings'
 import type { GameState } from '@/game/types'
 
@@ -144,6 +144,54 @@ function answering(by = BOB): GameState {
   ])
 }
 
+/** Bob buzzed first, with Ann and Cid right behind him. */
+function photoFinish(): GameState {
+  return run(clue(), [
+    { type: 'openBuzzers', target: DEMO_TARGET },
+    { type: 'buzzersOpened', clueId: CLUE_ID, attempt: 1, seq: 1, now: 0 },
+    { type: 'buzz', playerId: BOB, clueId: CLUE_ID, attempt: 1, seq: 2, now: 412 },
+    { type: 'buzz', playerId: ANN, clueId: CLUE_ID, attempt: 1, seq: 3, now: 492 },
+    { type: 'buzz', playerId: CID, clueId: CLUE_ID, attempt: 1, seq: 4, now: 620 },
+  ])
+}
+
+/** Bob buzzed in a game with a 10 second answer timer, which is now running. */
+function answerTimer(): GameState {
+  const now = Date.now()
+  return run(clue({ answerTimerMs: 10_000 }), [
+    { type: 'openBuzzers', target: DEMO_TARGET },
+    { type: 'buzzersOpened', clueId: CLUE_ID, attempt: 1, seq: 1, now: now - 900 },
+    { type: 'buzz', playerId: BOB, clueId: CLUE_ID, attempt: 1, seq: 2, now },
+  ])
+}
+
+/**
+ * Plays a whole clue: buzzers open, `buzzes` reach the host (ms after opening, in that order), the first one
+ * answers `correct`ly or not, and back to the board.
+ */
+function playClue(state: GameState, ref: { round: number; category: number; clue: number }, buzzes: [string, number][], correct: boolean) {
+  const id = clueId(ref)
+  let s = run(state, [{ type: 'selectClue', ref }, { type: 'openBuzzers', target: DEMO_TARGET }])
+  const attempt = s.current!.attempt
+  s = run(s, [
+    { type: 'buzzersOpened', clueId: id, attempt, seq: 1, now: 0 },
+    ...buzzes.map(([playerId, ms], i): Action => ({ type: 'buzz', playerId, clueId: id, attempt, seq: 2 + i, now: ms })),
+    { type: 'judge', correct },
+    { type: 'revealAnswer' },
+  ])
+  return reduce(s, { type: 'returnToBoard' })
+}
+
+/** A few clues played (Ann on a streak, a photo finish with Bob), then the game ends: podium and awards. */
+function gameOver(): GameState {
+  let s = midRound()
+  s = playClue(s, { round: 0, category: 1, clue: 1 }, [[ANN, 380], [BOB, 430]], true)
+  s = playClue(s, { round: 0, category: 1, clue: 2 }, [[ANN, 510]], true)
+  s = playClue(s, { round: 0, category: 2, clue: 2 }, [[ANN, 450]], true)
+  s = playClue(s, { round: 0, category: 3, clue: 2 }, [[BOB, 700]], false)
+  return reduce(s, { type: 'endGame' })
+}
+
 function final(): GameState {
   return run(midRound(), [{ type: 'startFinal' }])
 }
@@ -188,6 +236,8 @@ export const scenarios = {
   }),
   'Clue: quick draw, Bob answering': () => ({ state: quickDrawAnswering() }),
   'Clue: Bob answering': () => ({ state: answering(BOB) }),
+  'Clue: photo finish': () => ({ state: photoFinish() }),
+  'Clue: answer timer running': () => ({ state: answerTimer() }),
   'Clue: Ann answering': () => ({ state: answering(ANN) }),
   'Clue: Bob was wrong': () => ({ state: run(answering(BOB), [{ type: 'judge', correct: false }]) }),
   'Clue: revealed': () => ({ state: run(answering(ANN), [{ type: 'judge', correct: true }]) }),
@@ -217,7 +267,7 @@ export const scenarios = {
       { type: 'showFinalResponse' },
     ]),
   }),
-  'Game over': () => ({ state: run(midRound(), [{ type: 'endGame' }]) }),
+  'Game over': () => ({ state: gameOver() }),
 } satisfies Record<string, () => Scenario>
 
 export type ScenarioName = keyof typeof scenarios

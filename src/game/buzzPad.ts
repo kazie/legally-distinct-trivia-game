@@ -6,6 +6,12 @@ export function formatSeconds(ms: number): string {
   return `${(ms / 1000).toFixed(2)} s`
 }
 
+/** Runner-ups behind the buzz winner, e.g. `Bob +0.08 s · Cid +0.21 s`. Empty without a photo finish. */
+export function photoFinishText(order: { playerId: string; ms: number }[], nameOf: (id: string) => string | null): string {
+  const [winner, ...rest] = order
+  return rest.map((b) => `${nameOf(b.playerId) ?? '?'} +${formatSeconds(b.ms - winner!.ms)}`).join(' · ')
+}
+
 export function isBuzzTarget(value: number): boolean {
   return Number.isInteger(value) && value >= 0 && value < BUZZ_EMOJIS.length
 }

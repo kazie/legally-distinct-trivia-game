@@ -59,6 +59,40 @@ export interface LoggedFalseStart extends FalseStart {
   seq: number
 }
 
+/** A buzz in host receive time, from the moment the buzzers opened. */
+export interface BuzzTime {
+  playerId: string
+  ms: number
+}
+
+/** One answer on a clue. */
+export interface Attempt {
+  playerId: string
+  correct: boolean
+  /** How fast they buzzed; null on a Daily Double (nobody buzzes). */
+  ms: number | null
+}
+
+/** Two players who buzzed almost at once: the winner and the runner-up. */
+export interface PhotoFinish {
+  playerIds: [string, string]
+  gapMs: number
+}
+
+/** A played clue, for stats and the results export. */
+export interface ClueResult {
+  clueId: string
+  round: number
+  category: string
+  /** Points at stake: the (possibly shrunk) value, or the Daily Double wager. */
+  value: number
+  dailyDouble: boolean
+  attempts: Attempt[]
+  /** The closest finish on this clue, if anyone else buzzed right behind the winner. */
+  photoFinish: PhotoFinish | null
+  scoresAfter: Record<string, number>
+}
+
 export interface CurrentClue extends BuzzWindow {
   ref: ClueRef
   id: string
@@ -73,6 +107,14 @@ export interface CurrentClue extends BuzzWindow {
   ddWager: number | null
   /** A picture clue that sharpens while buzzers are open, or null. */
   reveal: BlurReveal | null
+  /** Host time the buzzers of the current attempt opened. */
+  openedAt: number | null
+  /** The winner of the current attempt and up to two runner-ups who pressed right behind. */
+  buzzOrder: BuzzTime[]
+  attempts: Attempt[]
+  photoFinish: PhotoFinish | null
+  /** Host time the answer timer runs out, while someone answers with the timer on. */
+  answerEndsAt: number | null
 }
 
 export interface FinalState {
@@ -123,6 +165,8 @@ export interface GameState {
    * penalties survive the host's undo (see `HostController.undo`).
    */
   falseStarts: LoggedFalseStart[]
+  /** Every clue played this game, in order. */
+  history: ClueResult[]
 }
 
 /* ---------- What gets broadcast to players and the board screen (no unrevealed answers) ---------- */
@@ -158,6 +202,9 @@ export interface PublicCurrentClue {
   ddMaxWager: number | null
   lockedUntil: Record<string, number>
   falseStarts: FalseStart[]
+  /** Winner first, then runner-ups (photo finish). */
+  buzzOrder: BuzzTime[]
+  answerEndsAt: number | null
 }
 
 export interface PublicFinal {
@@ -197,6 +244,28 @@ export interface PublicPlayer {
   name: string
   score: number
   connected: boolean
+  /** Clues won in a row. */
+  streak: number
+}
+
+export interface Award {
+  key: string
+  emoji: string
+  title: string
+  playerIds: string[]
+  detail: string
+}
+
+export interface RankedPlayer {
+  playerId: string
+  /** 1 for the winner(s); ties share a rank. */
+  rank: number
+  score: number
+}
+
+export interface GameOver {
+  ranking: RankedPlayer[]
+  awards: Award[]
 }
 
 export interface PublicState {
@@ -215,6 +284,8 @@ export interface PublicState {
   current: PublicCurrentClue | null
   final: PublicFinal | null
   practice: PublicPractice | null
+  /** Only in `game_over`. */
+  gameOver: GameOver | null
   settings: GameSettings
   hostTime: number
 }

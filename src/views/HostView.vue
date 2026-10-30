@@ -5,14 +5,15 @@ import ClueExtras from '@/components/ClueExtras.vue'
 import ConnectionBadge from '@/components/ConnectionBadge.vue'
 import JoinQr from '@/components/JoinQr.vue'
 import MediaCheck from '@/components/MediaCheck.vue'
-import { BUZZ_EMOJIS, formatSeconds, pickBuzzTarget } from '@/game/buzzPad'
-import { allBoards, type BoardEntry } from '@/content/boards'
+import { BUZZ_EMOJIS, formatSeconds, photoFinishText, pickBuzzTarget } from '@/game/buzzPad'
+import { allBoards, downloadCsv, downloadJson, type BoardEntry } from '@/content/boards'
 import { lintBoard } from '@/content/lint'
 import { ddMaxWager, pickDailyDoubles, type Action } from '@/game/engine'
 import { HostController } from '@/game/hostController'
 import { liveClueValue } from '@/game/reveal'
 import { toPublicState } from '@/game/publicView'
-import { formatLockout, LOCKOUT_CHOICES, normalizeSettings, PENALTY_CHOICES, wrongAnswerPoints, type GameSettings } from '@/game/settings'
+import { gameResults, resultRows } from '@/game/stats'
+import { ANSWER_TIMER_CHOICES, formatLockout, LOCKOUT_CHOICES, normalizeSettings, PENALTY_CHOICES, wrongAnswerPoints, type GameSettings } from '@/game/settings'
 import { useWakeLock } from '@/composables/useWakeLock'
 import { ignoreHotkey } from '@/keys'
 import { useBridge } from '@/net/useBridge'
@@ -128,6 +129,20 @@ function kick(id: string) {
 
 function confirmThen(message: string, action: Action) {
   if (confirm(message)) act(action)
+}
+
+/** `office-party-2026-10-30` */
+function resultsName(): string {
+  return `${board.value?.id ?? 'game'}-${new Date().toISOString().slice(0, 10)}`
+}
+
+function downloadResults(format: 'json' | 'csv') {
+  if (format === 'json') return downloadJson(`${resultsName()}.json`, gameResults(game.value))
+  const rows = resultRows(game.value)
+  downloadCsv(`${resultsName()}.csv`, [
+    ['Rank', 'Name', 'Score', 'Correct', 'Wrong', 'False starts', 'Average buzz (s)', 'Best streak'],
+    ...rows.map((r) => [r.rank, r.name, r.score, r.correct, r.wrong, r.falseStarts, r.avgBuzzSeconds, r.bestStreak]),
+  ])
 }
 
 function copy(text: string) {
@@ -271,6 +286,13 @@ onUnmounted(() => {
               <input v-model="settings.wrongAnswerPenalty" type="checkbox" />
               Wrong answers cost points (turn off for kids or casual games)
             </label>
+            <label class="inline">
+              Time to answer after buzzing
+              <select v-model.number="settings.answerTimerMs">
+                <option v-for="ms in ANSWER_TIMER_CHOICES" :key="ms" :value="ms">{{ ms ? `${ms / 1000} s` : 'no timer' }}</option>
+              </select>
+              <span class="muted">(a countdown on the TV; you still judge)</span>
+            </label>
             <label class="check">
               <input v-model="settings.mediaOnPhones" type="checkbox" />
               Show pictures and video on phones too (audio always plays there)
@@ -390,7 +412,11 @@ onUnmounted(() => {
         </div>
 
         <div v-else-if="cur.status === 'answering'" class="stack">
-          <div class="winner">{{ nameOf(cur.buzzWinner) }} <small>is answering</small></div>
+          <div class="winner">
+            {{ nameOf(cur.buzzWinner) }} <small>is answering</small>
+            <small v-if="cur.answerEndsAt" class="gold">{{ Math.max(0, Math.ceil((cur.answerEndsAt - clock) / 1000)) }} s</small>
+          </div>
+          <p v-if="cur.buzzOrder.length > 1" class="muted">📸 {{ photoFinishText(cur.buzzOrder, nameOf) }}</p>
           <div class="row">
             <button class="ok big" @click="act({ type: 'judge', correct: true })">Correct +{{ cur.value }} <kbd>C</kbd></button>
             <button class="bad big" @click="act({ type: 'judge', correct: false, target: nextTarget() })">
@@ -481,8 +507,18 @@ onUnmounted(() => {
       <div v-else-if="game.phase === 'game_over'" class="panel stack">
         <h2>Game over</h2>
         <ol>
-          <li v-for="p in [...game.players].sort((a, b) => b.score - a.score)" :key="p.id">{{ p.name }} — {{ p.score }}</li>
+          <li v-for="p in pub.gameOver?.ranking" :key="p.playerId">{{ nameOf(p.playerId) }} — {{ p.score }}</li>
         </ol>
+        <ul v-if="pub.gameOver?.awards.length" class="awards">
+          <li v-for="a in pub.gameOver.awards" :key="a.key">
+            {{ a.emoji }} <strong>{{ a.title }}</strong>: {{ a.playerIds.map(nameOf).join(' & ') }} <span class="muted">({{ a.detail }})</span>
+          </li>
+        </ul>
+        <div class="row">
+          <span class="muted">Download results:</span>
+          <button class="small" @click="downloadResults('json')">JSON</button>
+          <button class="small" @click="downloadResults('csv')">CSV (spreadsheet)</button>
+        </div>
         <div class="row">
           <button class="primary" @click="confirmThen('Reset scores and go back to the lobby?', { type: 'resetToLobby' })">
             Play again (same players)
@@ -668,6 +704,10 @@ kbd {
 }
 .keys {
   font-size: 0.8em;
+}
+.awards {
+  margin: 0;
+  padding-left: 1.2em;
 }
 .final-table {
   width: 100%;

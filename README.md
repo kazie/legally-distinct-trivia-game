@@ -56,6 +56,17 @@ The bridge URL defaults to `ws://<page host>:8080/ws`. To use another one, set `
 6. **Rounds:** when a round's board is cleared, the next round starts. The lowest scorer gets control.
 7. **Final round:** players with a positive score wager, then type an answer before the timer runs out. The
    host reveals and judges each response, lowest score first.
+8. **Game over:** the board screen raises a podium (2nd, 1st, 3rd) and hands out awards one by one, each only
+   when there's something to give it for: most right answers, fastest average buzz, closest photo finish,
+   longest streak, biggest Daily Double won, comeback from the lowest score, most false starts and the
+   final-round hero. Each phone shows its place and its own awards. The host can **download the results** as
+   JSON (everything, clue by clue) or CSV (one row per player: rank, score, right, wrong, false starts,
+   average buzz, best streak).
+
+Along the way:
+- **Photo finish:** when others pressed right behind the winner, the board screen and host show by how much
+  ("Bob +0.08 s · Cid +0.21 s", measured when the presses reached the host).
+- **Scores:** the leader wears a 👑, three or more clues in a row earn a 🔥, and changes float up from the score.
 
 The host can also rename or remove players, adjust scores, give control to someone, and end a round early.
 
@@ -82,6 +93,10 @@ Set in the lobby; the host's browser remembers them for next time.
 
 Also in the lobby: **Media on phones** (off by default) shows pictures and video on the phones as well as the TV,
 including answer media, for players following over a video call. Audio always plays on phones.
+
+**Time to answer** (no timer / 5 / 10 / 15 / 30 s, default no timer): after someone buzzes in (or a Daily
+Double clue shows), the board screen shows a shrinking bar and beeps at zero, and the answering phone shows the
+seconds. The host still judges; nothing happens automatically.
 
 **Wrong answers cost points** (on by default). Turn it off for kids or casual games: a wrong
 answer then only locks the player out of that clue. Wagers still count either way (a wrong Daily Double or

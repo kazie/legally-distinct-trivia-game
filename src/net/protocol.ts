@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { PublicState } from '@/game/types'
 
-export const PROTOCOL_VERSION = 5
+export const PROTOCOL_VERSION = 6
 
 const id = z.string().min(1).max(64)
 const base = { v: z.literal(PROTOCOL_VERSION) }
