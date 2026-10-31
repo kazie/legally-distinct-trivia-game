@@ -208,6 +208,27 @@ label.check {
   color: var(--warn);
 }
 
+/* A label with its control on the same line. */
+.inline {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+
+/* A filling bar: <div class="bar"><div :style="{ width }" /></div>. */
+.bar {
+  height: 0.5em;
+  background: var(--panel-2);
+  border-radius: 1em;
+  overflow: hidden;
+}
+
+.bar > div {
+  height: 100%;
+  background: var(--gold);
+  transition: width 0.25s linear;
+}
+
 .ok-note {
   color: var(--ok);
 }

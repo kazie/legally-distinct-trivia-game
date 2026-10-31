@@ -226,13 +226,17 @@ No questions written yet? **⚡ Instant board** in the host lobby, or **New from
 builds a board from [Open Trivia DB](https://opentdb.com): 1 or 2 rounds of 5 categories × 5 questions
 (easiest first, 200–1000, double in round 2, random Daily Doubles), plus a hard final question from another
 category. In the editor you can pick categories (random ones fill the rest) and the board opens as a draft to
-edit before playing; the host lobby saves it as a draft and loads it right away.
+edit before playing; the host lobby saves it as a new draft and loads it right away.
 
 - It takes a while: the API allows one request per 5 seconds, so requests go one after another with a progress
-  bar: under a minute for 1 round, a minute or two for 2 rounds and a final.
-- A session token is kept in the browser, so repeat games avoid repeat questions. When a category runs out of
-  new questions it retries without the token, and skips the category for another one if it's still too small.
+  bar: under a minute for 1 round, a minute or two for 2 rounds and a final. The gap also holds between boards,
+  so making another one right away waits its turn instead of being turned away.
+- A session token is kept in the browser, so repeat games avoid repeat questions. When the token has seen every
+  question in one category, that category is fetched without it (questions there may repeat) and the token stays
+  for the others. A category too small for a column is swapped for a random one; the form says so when it was
+  one you picked.
 - Each clue lists the difficulty and the wrong options as a host note, and links Open Trivia DB as its source.
+  Questions worded around their options ("Which of the following…") show the options in the clue.
 - Questions from Open Trivia DB are licensed [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
   Generated boards carry a `credit` that the TV shows before the game (any board can have one).
 

@@ -53,6 +53,21 @@ export function saveDraft(id: string, board: unknown, previousId?: string): void
   localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts))
 }
 
+/** `base`, or `base-2`, `base-3`… when a board (draft or file) already has that id. */
+export function uniqueBoardId(base: string): string {
+  const taken = new Set(allBoards().map((b) => b.id))
+  let id = base
+  for (let n = 2; taken.has(id); n++) id = `${base}-${n}`
+  return id
+}
+
+/** Saves a board as a new draft without replacing any other, and returns the id it got. */
+export function saveNewDraft(board: object, base: string): string {
+  const id = uniqueBoardId(base.replace(/[^a-z0-9-]/g, '-').toLowerCase() || 'imported')
+  saveDraft(id, { ...board, id })
+  return id
+}
+
 export function deleteDraft(id: string): void {
   const drafts = loadDrafts()
   delete drafts[id]

@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { onUnmounted, ref, shallowRef } from 'vue'
+import { onUnmounted, ref, shallowRef, watch } from 'vue'
 import { fetchCategories, generateBoard, type InstantOptions, type OtdbCategory } from '@/content/opentdb'
 import type { Board } from '@/content/schema'
 import { useStorages } from '@/storage'
 
 /**
  * Makes a board from Open Trivia DB. With `options`, the editor's form: rounds, final, categories to pick.
- * Without, a one-click button with the defaults (host lobby).
+ * Without, a one-click button with the defaults (host lobby). `onReady` is a prop rather than an event so
+ * that when it fails (say, the draft can't be saved), the error shows here.
  */
-defineProps<{ options?: boolean }>()
-const emit = defineEmits<{ ready: [board: Board] }>()
+const props = defineProps<{ options?: boolean; onReady: (board: Board) => void }>()
+/** True while a board is being made. */
+const busy = defineModel<boolean>('busy', { default: false })
 
 const { local } = useStorages()
 const rounds = ref<1 | 2>(2)
@@ -18,16 +20,26 @@ const picked = ref<number[]>([])
 const categories = shallowRef<OtdbCategory[]>([])
 const progress = ref<{ done: number; total: number } | null>(null)
 const error = ref('')
+const notice = ref('')
 let controller: AbortController | null = null
 onUnmounted(() => controller?.abort())
+// Fewer rounds have room for fewer picks.
+watch(rounds, (n) => (picked.value = picked.value.slice(0, n * 5)))
 
 // Bound like this, not passed as `fetch` itself: browsers refuse a fetch called on another object.
 const api = { fetch: (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init) }
 
-async function loadCategories() {
-  if (categories.value.length) return categories.value
-  categories.value = await fetchCategories(api)
-  return categories.value
+let loading: Promise<OtdbCategory[]> | null = null
+/** The category list, fetched once (and once at a time). */
+function loadCategories(): Promise<OtdbCategory[]> {
+  loading ??= fetchCategories(api).then(
+    (list) => (categories.value = list),
+    (e) => {
+      loading = null
+      throw e
+    },
+  )
+  return loading
 }
 
 async function showOptions(event: Event) {
@@ -42,20 +54,30 @@ async function generate() {
   const { signal } = controller
   const options: InstantOptions = { rounds: rounds.value, final: withFinal.value, categories: picked.value }
   error.value = ''
-  progress.value = { done: 0, total: options.rounds * 5 + (options.final ? 1 : 0) }
+  notice.value = ''
+  progress.value = { done: 0, total: 0 }
+  busy.value = true
   try {
-    const board = await generateBoard(await loadCategories(), options, {
+    const { board, skipped } = await generateBoard(await loadCategories(), options, {
       ...api,
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       storage: local,
       signal,
       onProgress: (done, total) => (progress.value = { done, total }),
     })
-    emit('ready', board)
+    if (skipped.length) notice.value = `Not enough questions in ${skipped.join(', ')}: used random categories instead.`
+    try {
+      props.onReady(board)
+    } catch (e) {
+      error.value = `Could not use the board: ${(e as Error).message}`
+    }
   } catch (e) {
     if (!signal.aborted) error.value = `Open Trivia DB: ${(e as Error).message}`
   } finally {
-    if (!signal.aborted) progress.value = null
+    if (!signal.aborted) {
+      progress.value = null
+      busy.value = false
+    }
   }
 }
 </script>
@@ -84,10 +106,14 @@ async function generate() {
       </div>
     </details>
     <button v-else class="small" :disabled="!!progress" @click="generate">⚡ Instant board (Open Trivia DB)</button>
-    <div v-if="progress" class="progress" role="progressbar" :aria-valuenow="progress.done" :aria-valuemax="progress.total">
-      <div :style="{ width: `${(progress.done / progress.total) * 100}%` }" />
-      <small class="muted">Fetching questions… {{ progress.done }}/{{ progress.total }} (Open Trivia DB allows one request per 5 seconds)</small>
+    <div v-if="progress" class="stack progress" role="progressbar" :aria-valuenow="progress.done" :aria-valuemax="progress.total">
+      <div class="bar"><div :style="{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }" /></div>
+      <small class="muted">
+        Fetching questions… {{ progress.total ? `${progress.done}/${progress.total}` : '' }} (Open Trivia DB allows one request per 5
+        seconds)
+      </small>
     </div>
+    <p v-if="notice" class="warn-note">{{ notice }}</p>
     <p v-if="error" class="error">{{ error }}</p>
   </div>
 </template>
@@ -101,18 +127,9 @@ async function generate() {
   display: grid;
 }
 .progress {
-  display: grid;
   gap: 0.2em;
 }
-.progress div {
+.progress .bar {
   height: 0.4em;
-  background: var(--gold);
-  border-radius: 1em;
-  transition: width 0.3s;
-}
-.inline {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
 }
 </style>
