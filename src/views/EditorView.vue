@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { allBoards, deleteDraft, downloadJson, loadDrafts, saveDraft, type BoardEntry } from '@/content/boards'
+import { allBoards, deleteDraft, downloadJson, loadDrafts, saveDraft, saveNewDraft, uniqueBoardId, type BoardEntry } from '@/content/boards'
 import MediaCheck from '@/components/MediaCheck.vue'
 import MediaFields from '@/components/MediaFields.vue'
 import AnswerFields from '@/components/AnswerFields.vue'
@@ -113,15 +113,8 @@ watch(
   { deep: true },
 )
 
-function uniqueId(base: string) {
-  const taken = new Set(boards.value.map((b) => b.id))
-  let id = base
-  for (let n = 2; taken.has(id); n++) id = `${base}-${n}`
-  return id
-}
-
 function newBoard() {
-  const id = uniqueId('new-board')
+  const id = uniqueBoardId('new-board')
   saveDraft(id, emptyBoard(id))
   refresh()
   router.push({ name: 'editor', params: { boardId: id } })
@@ -129,7 +122,7 @@ function newBoard() {
 
 function duplicate() {
   if (!draft.value) return
-  const id = uniqueId(`${draft.value.id}-copy`)
+  const id = uniqueBoardId(`${draft.value.id}-copy`)
   saveDraft(id, { ...JSON.parse(JSON.stringify(draft.value)), id, title: `${draft.value.title} (copy)` })
   refresh()
   router.push({ name: 'editor', params: { boardId: id } })
@@ -149,9 +142,7 @@ function removeDraft() {
  */
 function importRaw(raw: unknown) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('This is not a board')
-  const board = normalize(raw)
-  const id = uniqueId(board.id.replace(/[^a-z0-9-]/g, '-').toLowerCase() || 'imported')
-  saveDraft(id, { ...raw, id })
+  const id = saveNewDraft(raw, normalize(raw).id)
   refresh()
   router.push({ name: 'editor', params: { boardId: id } })
 }
@@ -357,7 +348,7 @@ function applyJson() {
         </label>
         <button class="small" @click="importUrl">Import from URL</button>
       </div>
-      <InstantBoard options @ready="importRaw" />
+      <InstantBoard options :on-ready="importRaw" />
       <p v-if="importError" class="error">{{ importError }}</p>
       <RouterLink
         v-for="b in boards"

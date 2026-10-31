@@ -2,6 +2,7 @@
   "$schema": "./board.schema.json",
   "id": "sample",
   "title": "Sample Trivia Night",
+  "credit": "Sample questions written for Legally Distinct Trivia Game",
   "rounds": [
     {
       "name": "Round 1",

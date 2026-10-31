@@ -7,9 +7,9 @@ import InstantBoard from '@/components/InstantBoard.vue'
 import JoinQr from '@/components/JoinQr.vue'
 import MediaCheck from '@/components/MediaCheck.vue'
 import { BUZZ_EMOJIS, formatCountdown, formatSeconds, photoFinishText, pickBuzzTarget } from '@/game/buzzPad'
-import { allBoards, downloadCsv, downloadJson, saveDraft, type BoardEntry } from '@/content/boards'
+import { allBoards, downloadCsv, downloadJson, saveNewDraft, type BoardEntry } from '@/content/boards'
 import { lintBoard } from '@/content/lint'
-import type { Board } from '@/content/schema'
+import { validateBoard, type Board } from '@/content/schema'
 import { clueOf, ddMaxWager, pickDailyDoubles, TIEBREAK_ID, type Action } from '@/game/engine'
 import { allAnswers, matchAnswer, type AnswerMatch } from '@/game/fuzzy'
 import { HostController } from '@/game/hostController'
@@ -34,6 +34,8 @@ const clock = ref(Date.now())
 const pub = computed(() => toPublicState(game.value, clock.value))
 
 const boards = shallowRef<BoardEntry[]>(allBoards())
+/** While an instant board is being made: the picker is locked so it doesn't replace a board picked meanwhile. */
+const makingBoard = ref(false)
 const selectedBoardKey = ref(game.value.board ? `${boardSource(game.value.board.id)}:${game.value.board.id}` : '')
 const finalSeconds = ref(30)
 const pauseMinutes = ref(0)
@@ -102,12 +104,14 @@ function loadSelectedBoard() {
   if (entry?.board) act({ type: 'loadBoard', board: entry.board, dailyDoubles: pickDailyDoubles(entry.board) })
 }
 
-/** A fresh Open Trivia DB board: kept as an editor draft (to tweak or replay) and loaded right away. */
+/** A fresh Open Trivia DB board: kept as a new editor draft (to tweak or replay) and loaded right away. */
 function loadInstantBoard(board: Board) {
-  saveDraft(board.id, board)
+  const validation = validateBoard(board)
+  if (!validation.ok) throw new Error(validation.issues.map((i) => i.message).join('; '))
+  const id = saveNewDraft(validation.board, validation.board.id)
   boards.value = allBoards()
-  selectedBoardKey.value = `draft:${board.id}`
-  act({ type: 'loadBoard', board, dailyDoubles: pickDailyDoubles(board) })
+  selectedBoardKey.value = `draft:${id}`
+  loadSelectedBoard()
 }
 
 function startGame() {
@@ -243,7 +247,7 @@ onUnmounted(() => {
           <div class="stack">
             <label>
               Board
-              <select v-model="selectedBoardKey" @change="loadSelectedBoard">
+              <select v-model="selectedBoardKey" :disabled="makingBoard" @change="loadSelectedBoard">
                 <option value="" disabled>Choose a board…</option>
                 <option v-for="b in boards" :key="`${b.source}:${b.id}`" :value="`${b.source}:${b.id}`" :disabled="!b.board">
                   {{ b.title }} ({{ b.source === 'draft' ? 'editor draft' : 'file' }}{{ b.board ? '' : `, ${b.issues.length} problems` }})
@@ -251,7 +255,7 @@ onUnmounted(() => {
               </select>
             </label>
             <div class="row">
-              <InstantBoard @ready="loadInstantBoard" />
+              <InstantBoard v-model:busy="makingBoard" :on-ready="loadInstantBoard" />
               <button class="small ghost" @click="boards = allBoards()">Refresh list</button>
               <RouterLink class="btn small ghost" :to="{ name: 'editor' }" target="_blank">Open editor ↗</RouterLink>
             </div>
@@ -791,11 +795,6 @@ kbd {
 .settings .hint {
   margin: 0;
   font-size: 0.9em;
-}
-.inline {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
 }
 .players {
   position: sticky;

@@ -558,15 +558,7 @@ onUnmounted(() => {
 }
 .answer-timer .bar {
   flex: 1;
-  height: 0.5em;
   background: var(--cell-border);
-  border-radius: 1em;
-  overflow: hidden;
-}
-.answer-timer .bar div {
-  height: 100%;
-  background: var(--gold);
-  transition: width 0.25s linear;
 }
 .results {
   font-size: 1.6em;
