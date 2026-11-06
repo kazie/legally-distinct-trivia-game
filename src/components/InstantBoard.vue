@@ -3,6 +3,7 @@ import { onUnmounted, ref, shallowRef, watch } from 'vue'
 import { fetchCategories, generateBoard, type InstantOptions, type OtdbCategory } from '@/content/opentdb'
 import type { Board } from '@/content/schema'
 import { useStorages } from '@/storage'
+import Icon from './Icon.vue'
 
 /**
  * Makes a board from Open Trivia DB. With `options`, the editor's form: rounds, final, categories to pick.
@@ -105,7 +106,7 @@ async function generate() {
         <button class="small primary" :disabled="!!progress" @click="generate">Make board</button>
       </div>
     </details>
-    <button v-else class="small" :disabled="!!progress" @click="generate">⚡ Instant board (Open Trivia DB)</button>
+    <button v-else class="small" :disabled="!!progress" @click="generate"><Icon name="bolt" /> Instant board (Open Trivia DB)</button>
     <div v-if="progress" class="stack progress" role="progressbar" :aria-valuenow="progress.done" :aria-valuemax="progress.total">
       <div class="bar"><div :style="{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }" /></div>
       <small class="muted">

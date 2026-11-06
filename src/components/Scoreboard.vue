@@ -82,10 +82,14 @@ function popDone(id: string) {
   padding: 0.4em 1em;
   min-width: 7em;
   text-align: center;
+  box-shadow: var(--tile-bevel);
+  transition:
+    transform 0.15s,
+    border-color 0.15s;
 }
 .score.highlight {
   border-color: var(--gold);
-  box-shadow: 0 0 18px #f5c54288;
+  transform: translateY(-3px);
 }
 .score.me {
   outline: 2px dashed var(--accent);
@@ -101,7 +105,8 @@ function popDone(id: string) {
   font-size: 0.85em;
 }
 .value {
-  font-size: 1.5em;
+  font-size: 1.75em;
+  line-height: 1.1;
 }
 .negative {
   color: var(--bad-text);
@@ -114,7 +119,7 @@ function popDone(id: string) {
   font-weight: 900;
   font-size: 1.3em;
   color: var(--ok);
-  text-shadow: 2px 2px 0 #000a;
+  text-shadow: 2px 2px 0 var(--shadow-text);
   pointer-events: none;
   animation: float-up 1.6s ease-out forwards;
 }

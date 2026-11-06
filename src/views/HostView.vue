@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import BoardGrid from '@/components/BoardGrid.vue'
 import ClueExtras from '@/components/ClueExtras.vue'
 import ConnectionBadge from '@/components/ConnectionBadge.vue'
+import Icon from '@/components/Icon.vue'
 import InstantBoard from '@/components/InstantBoard.vue'
 import JoinQr from '@/components/JoinQr.vue'
 import MediaCheck from '@/components/MediaCheck.vue'
@@ -231,7 +232,7 @@ onUnmounted(() => {
 <template>
   <main class="host">
     <header class="row topbar">
-      <strong class="serif">Host · room <span class="gold code">{{ room }}</span></strong>
+      <strong class="display title">Host · room <span class="gold code">{{ room }}</span></strong>
       <a :href="boardUrl" target="_blank" class="btn small">Open board screen ↗</a>
       <button class="small" @click="copy(joinUrl)" title="Copy player link">Copy join link</button>
       <span class="spacer" />
@@ -268,7 +269,7 @@ onUnmounted(() => {
               <template v-if="board.final"> · final round</template>
               · {{ game.dailyDoubles.length }} Daily Double(s)
               <div v-if="headsUps" class="warn-note">
-                ⚠ {{ headsUps }} heads-up(s) in this board (giveaways, duplicates or long text): see the editor.
+                <Icon name="warning" /> {{ headsUps }} heads-up(s) in this board (giveaways, duplicates or long text): see the editor.
               </div>
               <MediaCheck :board="board" auto />
             </div>
@@ -391,7 +392,7 @@ onUnmounted(() => {
 
       <!-- Break -->
       <div v-else-if="game.pause" class="panel stack">
-        <h2>Break ☕</h2>
+        <h2><Icon name="pause" class="gold" /> Break</h2>
         <p>
           The board screen shows “{{ game.pause.message || 'Short break' }}”
           <template v-if="game.pause.until">and counts down: back in {{ formatCountdown(Math.max(0, game.pause.until - clock)) }}</template>
@@ -528,7 +529,7 @@ onUnmounted(() => {
         </div>
 
         <div v-else-if="cur.status === 'answering'" class="stack">
-          <div class="winner">
+          <div class="winner display">
             {{ nameOf(cur.buzzWinner) }} <small>is answering</small>
             <small v-if="cur.answerEndsAt" class="gold">{{ Math.max(0, Math.ceil((cur.answerEndsAt - clock) / 1000)) }} s</small>
           </div>
@@ -656,7 +657,7 @@ onUnmounted(() => {
           </select>
         </label>
         <input v-model="pauseMessage" maxlength="80" placeholder="Message on the TV (optional)" />
-        <button class="small" @click="togglePause">☕ Take a break <kbd>P</kbd></button>
+        <button class="small" @click="togglePause"><Icon name="pause" /> Take a break <kbd>P</kbd></button>
       </div>
     </section>
 
@@ -682,8 +683,8 @@ onUnmounted(() => {
           <button class="small" title="Add points" @click="applyAdjust(p.id, 1)">+</button>
           <button class="small" title="Subtract points" @click="applyAdjust(p.id, -1)">−</button>
           <span class="spacer" />
-          <button class="small ghost" title="Rename" @click="rename(p.id)">✎</button>
-          <button class="small ghost" title="Remove" @click="kick(p.id)">✕</button>
+          <button class="ghost icon-only" title="Rename" aria-label="Rename" @click="rename(p.id)"><Icon name="edit" /></button>
+          <button class="ghost icon-only" title="Remove" aria-label="Remove" @click="kick(p.id)"><Icon name="close" /></button>
         </div>
       </div>
       <p v-if="game.players.length === 0" class="muted">Waiting for players to join…</p>
@@ -704,6 +705,9 @@ onUnmounted(() => {
 }
 .topbar {
   grid-column: 1 / -1;
+}
+.title {
+  font-size: 1.3em;
 }
 .code {
   letter-spacing: 0.1em;
@@ -726,7 +730,6 @@ onUnmounted(() => {
 }
 .clue {
   font-size: 1.5rem;
-  text-transform: uppercase;
   margin: 0;
 }
 .answer {
@@ -734,14 +737,14 @@ onUnmounted(() => {
   gap: 0.8em;
   align-items: baseline;
   flex-wrap: wrap;
-  background: #0a1240;
+  background: var(--field-bg);
   padding: 0.7em 1em;
   border-radius: 8px;
   font-size: 1.2rem;
 }
 .winner {
   font-size: 2.2rem;
-  font-weight: 900;
+  font-weight: 800;
   color: var(--gold);
 }
 .winner small {
@@ -764,13 +767,6 @@ onUnmounted(() => {
 button.big {
   font-size: 1.15rem;
   padding: 0.8em 1.4em;
-}
-kbd {
-  font-size: 0.7em;
-  opacity: 0.7;
-  border: 1px solid currentColor;
-  border-radius: 4px;
-  padding: 0 0.3em;
 }
 .narrow {
   width: 6.5em;

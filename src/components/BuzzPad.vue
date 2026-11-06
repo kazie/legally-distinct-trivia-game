@@ -37,7 +37,7 @@ const emit = defineEmits<{ press: [index: number] }>()
       </button>
     </div>
     <div v-if="label" class="overlay">
-      <span class="label">{{ label }}</span>
+      <span class="buzz-label">{{ label }}</span>
       <small v-if="sublabel">{{ sublabel }}</small>
     </div>
   </div>
@@ -55,10 +55,17 @@ const emit = defineEmits<{ press: [index: number] }>()
   position: relative;
   width: min(100%, 52vh);
   aspect-ratio: 1;
-  margin: 0 auto;
-  border-radius: 24px;
+  /* The base sticks out below the pad by --drop; the margin keeps room for it. */
+  --drop: 8px;
+  margin: 0 auto var(--drop);
+  border-radius: var(--radius-lg);
   padding: 10px;
-  background: #2a2230;
+  --face: var(--buzz-idle);
+  --edge: var(--buzz-idle-edge);
+  background: var(--face);
+  box-shadow:
+    inset 0 4px 0 var(--buzz-rim),
+    0 var(--drop) 0 var(--edge);
   overflow: hidden;
   touch-action: manipulation;
   user-select: none;
@@ -89,8 +96,8 @@ const emit = defineEmits<{ press: [index: number] }>()
   transform: scale(0.92);
 }
 .ready {
-  background: radial-gradient(circle at 40% 35%, #ff6b6b, #c0161c);
-  box-shadow: 0 0 40px #ff4d4d88;
+  --face: var(--buzz-ready);
+  --edge: var(--buzz-ready-edge);
 }
 .ready .cell {
   background: #ffffff2a;
@@ -104,15 +111,16 @@ const emit = defineEmits<{ press: [index: number] }>()
   opacity: 0.35;
 }
 .stunned {
-  background: #3b3b3b;
-  animation: shake 0.2s linear;
+  --face: var(--buzz-stunned);
+  animation: buzz-shake 0.2s linear;
 }
 .stunned .cell {
   filter: grayscale(1);
   opacity: 0.4;
 }
 .mine {
-  background: var(--gold);
+  --face: var(--gold);
+  --edge: var(--gold-edge);
 }
 .overlay {
   position: absolute;
@@ -123,24 +131,13 @@ const emit = defineEmits<{ press: [index: number] }>()
   padding: 1rem;
   pointer-events: none;
   color: white;
-  text-shadow: 0 2px 8px #000c;
-}
-.label {
-  font-size: clamp(1.6rem, 9vw, 2.6rem);
-  font-weight: 900;
-  letter-spacing: 0.03em;
-  overflow-wrap: anywhere;
+  text-shadow: 0 2px 0 var(--shadow-text);
 }
 .overlay small {
   font-size: 1rem;
 }
 .mine .overlay {
-  color: #1a1400;
+  color: var(--on-gold);
   text-shadow: none;
-}
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-6px); }
-  75% { transform: translateX(6px); }
 }
 </style>

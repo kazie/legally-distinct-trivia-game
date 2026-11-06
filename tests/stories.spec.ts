@@ -238,7 +238,7 @@ describe('story harness renders real screens', () => {
       h('div', { class: 'phone' }, [h(StoryPlayer, { playerId: ANN })]),
       h(HostView, { room: DEMO_ROOM }),
     ], false)
-    expect(w.find('.tv .break').text()).toMatch(/Pizza is here ☕\s*Back in [45]:\d\d/)
+    expect(w.find('.tv .break').text()).toMatch(/Pizza is here\s*Back in [45]:\d\d/)
     expect(w.find('.phone').text()).toContain('Pizza is here')
     await w.findAll('button').find((b) => b.text().startsWith('Resume'))!.trigger('click')
     await settle()

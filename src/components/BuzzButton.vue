@@ -33,7 +33,7 @@ function onClick() {
 <template>
   <div class="wrap">
     <button class="buzz" :class="mode" type="button" aria-label="Buzz" @pointerdown="onPointerDown" @click="onClick">
-      <span class="label">{{ label ?? 'BUZZ' }}</span>
+      <span class="buzz-label">{{ label ?? 'BUZZ' }}</span>
       <small v-if="sublabel">{{ sublabel }}</small>
     </button>
   </div>
@@ -46,6 +46,8 @@ function onClick() {
   padding: 0.5rem 0;
 }
 .buzz {
+  --face: var(--buzz-idle);
+  --edge: var(--buzz-idle-edge);
   width: min(100%, 52vh, 22rem);
   aspect-ratio: 1;
   border-radius: 50%;
@@ -55,10 +57,14 @@ function onClick() {
   padding: 1.5rem;
   text-align: center;
   color: white;
-  text-shadow: 0 2px 8px #000c;
-  background: radial-gradient(circle at 40% 35%, #5a4a66, #2a2230);
-  border: 6px solid #ffffff22;
-  box-shadow: 0 10px 0 #120e16, 0 14px 30px #0008;
+  text-shadow: 0 2px 0 var(--shadow-text);
+  background: var(--face);
+  border: 6px solid #ffffff1f;
+  /* A lit rim on top and a solid base underneath: it looks like it can be pushed. */
+  box-shadow:
+    inset 0 6px 0 var(--buzz-rim),
+    0 10px 0 var(--edge),
+    0 14px 24px #0007;
   touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
@@ -67,20 +73,17 @@ function onClick() {
 }
 .buzz:active {
   transform: translateY(6px);
-  box-shadow: 0 4px 0 #120e16, 0 6px 16px #0008;
-}
-.label {
-  font-size: clamp(1.6rem, 9vw, 2.6rem);
-  font-weight: 900;
-  letter-spacing: 0.03em;
-  overflow-wrap: anywhere;
+  box-shadow:
+    inset 0 6px 0 var(--buzz-rim),
+    0 4px 0 var(--edge),
+    0 6px 12px #0007;
 }
 small {
   font-size: 1rem;
 }
 .ready {
-  background: radial-gradient(circle at 40% 35%, #ff6b6b, #c0161c);
-  box-shadow: 0 10px 0 #6d0a0e, 0 0 50px #ff4d4d99;
+  --face: var(--buzz-ready);
+  --edge: var(--buzz-ready-edge);
 }
 .waiting,
 .buzzed,
@@ -90,17 +93,13 @@ small {
   opacity: 0.75;
 }
 .stunned {
-  background: #3b3b3b;
-  animation: shake 0.2s linear;
+  --face: var(--buzz-stunned);
+  animation: buzz-shake 0.2s linear;
 }
 .mine {
-  background: var(--gold);
-  color: #1a1400;
+  --face: var(--gold);
+  --edge: var(--gold-edge);
+  color: var(--on-gold);
   text-shadow: none;
-}
-@keyframes shake {
-  0%, 100% { translate: 0; }
-  25% { translate: -6px; }
-  75% { translate: 6px; }
 }
 </style>

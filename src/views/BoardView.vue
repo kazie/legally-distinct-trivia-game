@@ -4,6 +4,7 @@ import BoardGrid from '@/components/BoardGrid.vue'
 import ClueResults from '@/components/ClueResults.vue'
 import ClueText from '@/components/ClueText.vue'
 import ConnectionBadge from '@/components/ConnectionBadge.vue'
+import Icon from '@/components/Icon.vue'
 import JoinQr from '@/components/JoinQr.vue'
 import Scoreboard from '@/components/Scoreboard.vue'
 import SourceLine from '@/components/SourceLine.vue'
@@ -99,31 +100,38 @@ onUnmounted(() => {
 <template>
   <main class="screen">
     <header class="row">
-      <strong class="serif gold">{{ state?.title ?? 'Legally Distinct Trivia' }}</strong>
+      <strong class="display gold title">{{ state?.title ?? 'Legally Distinct Trivia' }}</strong>
       <span v-if="state?.round && phase !== 'lobby'" class="muted">{{ state.round.name }}</span>
       <span class="spacer" />
       <span class="muted">Join at <strong>{{ joinUrl }}</strong> · room <strong class="gold">{{ room }}</strong></span>
-      <button class="ghost small" :title="soundOn ? 'Sound on' : 'Sound off'" @click="soundOn = !soundOn">
-        {{ soundOn ? '🔊' : '🔇' }}
+      <button
+        class="ghost icon-only"
+        :title="soundOn ? 'Sound is on' : 'Sound is off'"
+        aria-label="Sound"
+        :aria-pressed="soundOn"
+        @click="soundOn = !soundOn"
+      >
+        <Icon :name="soundOn ? 'sound-on' : 'sound-off'" />
       </button>
       <button
         v-if="canFullscreen"
-        class="ghost small"
+        class="ghost icon-only"
         :title="fullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'"
+        :aria-label="fullscreen ? 'Exit fullscreen' : 'Fullscreen'"
         @click="toggleFullscreen"
       >
-        {{ fullscreen ? '🗗' : '⛶' }}
+        <Icon :name="fullscreen ? 'fullscreen-exit' : 'fullscreen'" />
       </button>
       <ConnectionBadge :status="connection" :host-online="hostOnline" />
     </header>
 
     <section v-if="!state" class="center fill">
-      <h1 class="serif">Waiting for host of room <span class="gold">{{ room }}</span>…</h1>
+      <h1 class="display big-title">Waiting for host of room <span class="gold">{{ room }}</span>…</h1>
     </section>
 
     <!-- Break -->
     <section v-else-if="pause" class="fill center stack break">
-      <h1 class="serif big-title">{{ pause.message || 'Short break' }} ☕</h1>
+      <h1 class="display big-title"><Icon name="pause" class="gold" /> {{ pause.message || 'Short break' }}</h1>
       <p v-if="pauseLeft" class="value timer">Back in {{ formatCountdown(pauseLeft) }}</p>
       <ol class="standings">
         <li v-for="p in [...state.players].sort((a, b) => b.score - a.score)" :key="p.id">
@@ -135,10 +143,10 @@ onUnmounted(() => {
     <!-- Lobby -->
     <section v-else-if="phase === 'lobby'" class="lobby fill">
       <div class="center stack">
-        <h1 class="serif big-title">{{ state.title ?? 'Get ready!' }}</h1>
+        <h1 class="display big-title">{{ state.title ?? 'Get ready!' }}</h1>
         <JoinQr :url="joinUrl" :size="280" />
         <p class="join">Scan or go to <strong>{{ joinUrl }}</strong></p>
-        <p class="code serif">Room <span class="gold">{{ room }}</span></p>
+        <p class="code display">Room <span class="gold">{{ room }}</span></p>
         <p v-if="onLocalhost" class="muted">Tip: open this page via your LAN IP so phones can reach it.</p>
         <p v-if="state.credit" class="muted">{{ state.credit }}</p>
       </div>
@@ -147,7 +155,7 @@ onUnmounted(() => {
     <!-- Intro -->
     <section v-else-if="phase === 'intro'" class="fill intro">
       <div class="rules">
-        <h1 class="serif gold">How to play</h1>
+        <h1 class="display gold">How to play</h1>
         <ol>
           <li v-if="quickDraw">A clue appears and the buzzers open right away.</li>
           <li v-else>The host reads a clue out loud.</li>
@@ -184,14 +192,14 @@ onUnmounted(() => {
         </div>
       </div>
       <div class="clue practice" :class="{ open: practice?.status === 'open' }">
-        <div class="clue-head"><span>Practice</span></div>
+        <div class="clue-head display"><span>Practice</span></div>
         <div v-if="practice && practice.target !== null" class="target">
           <span :key="practice.attempt" class="target-emoji">{{ BUZZ_EMOJIS[practice.target] }}</span>
           <small class="gold">Tap it to buzz!</small>
         </div>
-        <div v-else-if="practice?.status === 'open' && !emojiPad" :key="practice.attempt" class="hint gold buzz-now">Buzz now!</div>
-        <p v-else-if="emojiPad" class="sub">Get your phone ready — the host will show an emoji to tap.</p>
-        <p v-else class="sub">Get your phone ready — press when this lights up.</p>
+        <div v-else-if="practice?.status === 'open' && !emojiPad" :key="practice.attempt" class="hint display gold buzz-now">Buzz now!</div>
+        <p v-else-if="emojiPad" class="sub">Get your phone ready. The host will show an emoji to tap.</p>
+        <p v-else class="sub">Get your phone ready, and press when this lights up.</p>
         <ol v-if="practice?.hits.length" class="hits">
           <li v-for="hit in practice.hits" :key="hit.playerId">
             {{ client.nameOf(hit.playerId) }} <span class="muted">{{ formatSeconds(hit.ms) }}</span>
@@ -207,13 +215,13 @@ onUnmounted(() => {
 
     <!-- Clue -->
     <section v-else-if="phase === 'clue' && cur" class="fill clue" :class="{ open: cur.status === 'open' }">
-      <div class="clue-head">
+      <div class="clue-head display">
         <span>{{ cur.category }}</span>
         <span v-if="cur.id === TIEBREAK_ID" class="gold">Tie-breaker</span>
         <span v-else class="value">{{ clueValue }}</span>
       </div>
       <template v-if="cur.status === 'dd_wager'">
-        <div class="dd serif">DAILY DOUBLE</div>
+        <div class="dd display">DAILY DOUBLE</div>
         <p class="sub">{{ client.nameOf(cur.ddPlayer) ?? 'Who' }} is wagering…</p>
       </template>
       <template v-else>
@@ -224,8 +232,8 @@ onUnmounted(() => {
           :media="cur.answerMedia ?? cur.media"
           :progress="cur.answerMedia ? null : revealProgress"
         />
-        <div v-else class="hidden-clue">🙈 Clue hidden — answer from memory!</div>
-        <div v-if="cur.status === 'answering'" class="banner">
+        <div v-else class="hidden-clue">Clue hidden: answer from memory!</div>
+        <div v-if="cur.status === 'answering'" class="banner display">
           {{ buzzWinnerName }}
           <small>{{ cur.dailyDouble ? `Daily Double for ${cur.value}` : 'buzzed in!' }}</small>
         </div>
@@ -246,7 +254,7 @@ onUnmounted(() => {
           <span class="target-emoji">{{ BUZZ_EMOJIS[cur.target] }}</span>
           <small class="gold">Tap it to buzz!</small>
         </div>
-        <div v-else-if="cur.status === 'open'" class="hint gold">Buzzers open!</div>
+        <div v-else-if="cur.status === 'open'" class="hint display gold">Buzzers open!</div>
         <div v-else-if="cur.status === 'revealed'" class="answer">
           <span class="serif gold">{{ cur.answer }}</span>
           <small v-if="cur.correctPlayer">{{ client.nameOf(cur.correctPlayer) }} +{{ cur.value }}</small>
@@ -265,8 +273,8 @@ onUnmounted(() => {
 
     <!-- Final -->
     <section v-else-if="phase?.startsWith('final') && final" class="fill clue">
-      <div class="clue-head"><span>Final round</span></div>
-      <div class="dd serif small-dd">{{ final.category }}</div>
+      <div class="clue-head display"><span>Final round</span></div>
+      <div class="dd display small-dd">{{ final.category }}</div>
       <template v-if="phase === 'final_wager'">
         <p class="sub">Place your wagers! {{ final.wagered.length }} / {{ final.eligible.length }}</p>
       </template>
@@ -277,7 +285,7 @@ onUnmounted(() => {
       </template>
       <template v-else-if="phase === 'final_judging'">
         <ClueText class="clue-text small-clue" :text="final.clue ?? ''" :media="final.answerMedia ?? final.media" />
-        <div v-if="final.judging" class="banner">
+        <div v-if="final.judging" class="banner display">
           {{ client.nameOf(final.judging.playerId) }}
           <small v-if="final.judging.response !== null">“{{ final.judging.response || '—' }}” · wagered {{ final.judging.wager }}</small>
         </div>
@@ -290,13 +298,13 @@ onUnmounted(() => {
 
     <!-- Game over -->
     <section v-else-if="phase === 'game_over' && gameOver" class="fill game-over">
-      <h1 class="serif big-title">Game over</h1>
+      <h1 class="display big-title">Game over</h1>
       <div class="podium">
         <div v-for="p in podium" :key="p.playerId" class="step" :class="`rank-${p.rank}`">
           <span class="medal">{{ ['🥇', '🥈', '🥉'][p.rank - 1] ?? '' }}</span>
           <strong class="pname">{{ client.nameOf(p.playerId) }}</strong>
           <span class="value">{{ p.score }}</span>
-          <div class="block">{{ p.rank }}</div>
+          <div class="block display">{{ p.rank }}</div>
         </div>
       </div>
       <div v-if="gameOver.awards.length" class="awards">
@@ -330,6 +338,9 @@ onUnmounted(() => {
   gap: 1rem;
   font-size: clamp(14px, 1.3vw, 22px);
 }
+.title {
+  font-size: 1.35em;
+}
 .fill {
   min-height: 0;
 }
@@ -339,7 +350,7 @@ onUnmounted(() => {
   text-align: center;
 }
 .big-title {
-  font-size: 3em;
+  font-size: 3.4em;
   margin: 0;
 }
 .lobby {
@@ -419,6 +430,7 @@ onUnmounted(() => {
   justify-items: center;
   gap: 1.2rem;
   border: 6px solid var(--cell-border);
+  box-shadow: var(--tile-bevel);
   transition: border-color 0.2s;
 }
 .clue.open {
@@ -429,7 +441,7 @@ onUnmounted(() => {
   gap: 1.5em;
   font-size: 1.4em;
   text-transform: uppercase;
-  font-weight: 700;
+  letter-spacing: 0.04em;
   color: var(--muted);
 }
 .clue-text {
@@ -442,7 +454,9 @@ onUnmounted(() => {
 .dd {
   font-size: 6em;
   color: var(--gold);
-  text-shadow: 4px 4px 0 #000a;
+  text-shadow: 3px 3px 0 var(--shadow-text);
+  line-height: 1;
+  text-transform: uppercase;
   text-align: center;
 }
 .small-dd {
@@ -453,9 +467,10 @@ onUnmounted(() => {
 }
 .banner {
   background: var(--gold);
-  color: #1a1400;
+  color: var(--on-gold);
   font-size: 3.2em;
-  font-weight: 900;
+  font-weight: 800;
+  line-height: 1.1;
   padding: 0.3em 1em;
   border-radius: var(--radius);
   display: grid;
@@ -470,12 +485,10 @@ onUnmounted(() => {
   display: grid;
   text-align: center;
   font-size: 3em;
-  text-transform: uppercase;
 }
 .answer small,
 .answer .source {
   font-size: 0.4em;
-  text-transform: none;
 }
 .hint {
   font-size: 2em;
@@ -525,7 +538,7 @@ onUnmounted(() => {
 .reaction small {
   font-size: 0.3em;
   font-weight: 700;
-  text-shadow: 1px 1px 0 #000;
+  text-shadow: 1px 1px 0 var(--shadow-text);
 }
 @keyframes float {
   from {
@@ -599,9 +612,11 @@ onUnmounted(() => {
   width: 100%;
   background: var(--cell-bg);
   border: 4px solid var(--cell-border);
+  border-bottom: 0;
+  box-shadow: var(--tile-bevel);
   border-radius: var(--radius) var(--radius) 0 0;
   font-size: 2.5em;
-  font-weight: 900;
+  font-weight: 800;
   color: var(--gold);
   padding-top: 0.3em;
 }
@@ -642,12 +657,6 @@ onUnmounted(() => {
   .step,
   .award {
     animation: none;
-  }
-}
-@keyframes pop {
-  from {
-    transform: scale(0.7);
-    opacity: 0;
   }
 }
 .target {
