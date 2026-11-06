@@ -166,6 +166,12 @@ importers:
 
   .:
     dependencies:
+      '@fontsource-variable/source-serif-4':
+        specifier: ^5.3.1
+        version: 5.3.1
+      '@fontsource/barlow-condensed':
+        specifier: ^5.3.0
+        version: 5.3.0
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
@@ -482,6 +488,12 @@ packages:
     peerDependenciesMeta:
       '@noble/hashes':
         optional: true
+
+  '@fontsource-variable/source-serif-4@5.3.1':
+    resolution: {integrity: sha512-4Rtay22SC4lMvw11r/+9kxANB6P3M0X8s1NudBC2v0J1KU2y3DcMoNcT3lBoZ/CqLirzf+StlO6UlJilyrvaUg==}
+
+  '@fontsource/barlow-condensed@5.3.0':
+    resolution: {integrity: sha512-RA7MmIx0v3eQ6Gcf74qLVLOwLB0GpPOzx+eU9iG/AmCnSJGcIWYeU8y6CEMGZ210MGwGg5CZhzLkkvyZdTTk1g==}
 
   '@histoire/app@1.0.0-beta.1':
     resolution: {integrity: sha512-6HoGrFFGIMkY+YGvvKaQYE83Y02IRNqWgqCSTctAMRErhz1gZVdRdl747pjEud8d4YMZ4nUjhJOm6fVXY7yG4w==}
@@ -2417,6 +2429,10 @@ snapshots:
     optional: true
 
   '@exodus/bytes@1.16.0': {}
+
+  '@fontsource-variable/source-serif-4@5.3.1': {}
+
+  '@fontsource/barlow-condensed@5.3.0': {}
 
   '@histoire/app@1.0.0-beta.1(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))':
     dependencies:

@@ -17,7 +17,7 @@ function go(name: 'play' | 'board') {
 
 <template>
   <main class="home">
-    <h1 class="serif title">Legally Distinct <span class="gold">Trivia</span></h1>
+    <h1 class="display title">Legally Distinct <span class="gold">Trivia</span></h1>
     <p class="muted">Pick a clue. Buzz first. Just say the answer.</p>
 
     <section class="panel stack">
@@ -27,7 +27,7 @@ function go(name: 'play' | 'board') {
           Room code
           <input
             v-model="code"
-            class="code"
+            class="code display"
             :maxlength="ROOM_CODE_LENGTH"
             autocomplete="off"
             autocapitalize="characters"
@@ -64,12 +64,16 @@ function go(name: 'play' | 'board') {
   gap: 1rem;
 }
 .title {
-  font-size: clamp(2rem, 8vw, 3.2rem);
+  font-size: clamp(2.6rem, 11vw, 4rem);
+  line-height: 1;
   margin: 0;
 }
 .code {
-  font-size: 2rem;
-  letter-spacing: 0.4em;
+  /* Letter-spacing also trails the last character, so the start padding gets it too to keep the code centred. */
+  --track: 0.3em;
+  font-size: 2.4rem;
+  letter-spacing: var(--track);
+  padding-inline: calc(0.7em + var(--track)) 0.7em;
   text-transform: uppercase;
   text-align: center;
 }

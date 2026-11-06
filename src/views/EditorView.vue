@@ -5,6 +5,7 @@ import { allBoards, deleteDraft, downloadJson, loadDrafts, saveDraft, saveNewDra
 import MediaCheck from '@/components/MediaCheck.vue'
 import MediaFields from '@/components/MediaFields.vue'
 import AnswerFields from '@/components/AnswerFields.vue'
+import Icon from '@/components/Icon.vue'
 import InstantBoard from '@/components/InstantBoard.vue'
 import SingleClueFields from '@/components/SingleClueFields.vue'
 import { lintBoard } from '@/content/lint'
@@ -416,7 +417,7 @@ function applyJson() {
         </ul>
         <MediaCheck v-if="validation?.ok" :board="validation.board" @select="goTo" />
         <details v-if="warnings.length" class="warnings">
-          <summary>⚠ {{ warnings.length }} heads-up(s): giveaways, duplicates, long text</summary>
+          <summary><Icon name="warning" /> {{ warnings.length }} heads-up(s): giveaways, duplicates, long text</summary>
           <ul class="issues">
             <li v-for="(w, i) in warnings" :key="i">
               <button class="link" @click="goTo(w.path)"><code>{{ w.path }}</code></button> {{ w.message }}
@@ -445,10 +446,10 @@ function applyJson() {
             {{ r.name || `Round ${i + 1}` }}
           </button>
           <button class="ghost" @click="addRound">+ Round</button>
-          <button class="ghost" :class="{ primary: !!draft.final }" @click="toggleExtra('final', 'final round')">
+          <button :class="draft.final ? 'primary' : 'ghost'" @click="toggleExtra('final', 'final round')">
             {{ draft.final ? '− Final round' : '+ Final round' }}
           </button>
-          <button class="ghost" :class="{ primary: !!draft.tiebreaker }" @click="toggleExtra('tiebreaker', 'tie-breaker')">
+          <button :class="draft.tiebreaker ? 'primary' : 'ghost'" @click="toggleExtra('tiebreaker', 'tie-breaker')">
             {{ draft.tiebreaker ? '− Tie-breaker' : '+ Tie-breaker' }}
           </button>
         </div>
@@ -471,7 +472,7 @@ function applyJson() {
           <div class="grid" :style="{ '--cols': round.categories.length }">
             <div v-for="(category, c) in round.categories" :key="`h${c}`" class="head">
               <input v-model="category.name" placeholder="Category" />
-              <button class="small ghost" title="Delete category" @click="removeCategory(c)">✕</button>
+              <button class="ghost icon-only" title="Delete category" aria-label="Delete category" @click="removeCategory(c)"><Icon name="close" /></button>
             </div>
             <template v-for="i in rows" :key="i">
               <button
@@ -599,7 +600,7 @@ function applyJson() {
 .issues {
   margin: 0;
   padding-left: 1.2em;
-  color: #ffb4b6;
+  color: var(--bad-text);
 }
 .tabs {
   gap: 0.4rem;
@@ -618,7 +619,7 @@ function applyJson() {
   gap: 2px;
   background: var(--cell-bg);
   padding: 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 .head input {
   font-weight: 700;
@@ -627,7 +628,7 @@ function applyJson() {
 }
 .cell {
   background: var(--cell-bg);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   display: grid;
   gap: 0.2em;
   padding: 0.5em 0.3em;

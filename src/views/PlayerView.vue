@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import BuzzButton from '@/components/BuzzButton.vue'
 import BuzzPad, { type BuzzPadMode } from '@/components/BuzzPad.vue'
 import ConnectionBadge from '@/components/ConnectionBadge.vue'
+import Icon from '@/components/Icon.vue'
 import MediaView from '@/components/MediaView.vue'
 import Scoreboard from '@/components/Scoreboard.vue'
 import SourceLine from '@/components/SourceLine.vue'
@@ -254,7 +255,7 @@ onUnmounted(() => {
       </div>
 
       <div v-if="pause" class="panel center stack">
-        <h2>{{ pause.message || 'Short break' }} ☕</h2>
+        <h2><Icon name="pause" class="gold" /> {{ pause.message || 'Short break' }}</h2>
         <p v-if="pauseLeft" class="big">Back in {{ formatCountdown(pauseLeft) }}</p>
       </div>
 
@@ -283,7 +284,7 @@ onUnmounted(() => {
         <h2>{{ state.round?.name }}</h2>
         <p class="muted">The categories are…</p>
         <ul class="categories">
-          <li v-for="name in introCategories" :key="name" class="gold serif">{{ name }}</li>
+          <li v-for="name in introCategories" :key="name" class="gold display">{{ name }}</li>
         </ul>
       </div>
 
@@ -299,7 +300,7 @@ onUnmounted(() => {
           <div class="muted">{{ cur.category }}</div>
           <div class="value clue-value">{{ cur.dailyDouble ? 'DAILY DOUBLE' : cur.id === TIEBREAK_ID ? 'TIE-BREAKER' : clueValue }}</div>
           <p v-if="cur.text" class="clue-text serif">{{ cur.text }}</p>
-          <p v-else-if="clueHidden" class="muted">🙈 Clue hidden — answer from memory!</p>
+          <p v-else-if="clueHidden" class="muted">Clue hidden: answer from memory!</p>
           <MediaView
             v-if="clueMedia"
             :key="clueMedia.src"
@@ -323,7 +324,7 @@ onUnmounted(() => {
           <p v-else class="big">{{ client.nameOf(cur.ddPlayer) ?? 'Someone' }} is placing a wager…</p>
         </div>
 
-        <div v-else-if="cur.dailyDouble && cur.status === 'answering'" class="answering" :class="{ mine: isMe(cur.buzzWinner) }">
+        <div v-else-if="cur.dailyDouble && cur.status === 'answering'" class="answering display" :class="{ mine: isMe(cur.buzzWinner) }">
           <template v-if="isMe(cur.buzzWinner)">YOU'RE UP!<small>{{ answerPrompt }}</small></template>
           <template v-else>{{ buzzWinnerName }}<small>is answering</small></template>
         </div>
@@ -383,7 +384,7 @@ onUnmounted(() => {
       <!-- Final -->
       <div v-else-if="phase === 'final_category' && final" class="panel center">
         <div class="muted">Final round category</div>
-        <p class="big gold serif">{{ final.category }}</p>
+        <p class="big gold display">{{ final.category }}</p>
         <p v-if="!eligibleForFinal" class="muted">You need a positive score to play the final round.</p>
       </div>
 
@@ -475,6 +476,7 @@ onUnmounted(() => {
   background: var(--cell-bg);
   border-radius: var(--radius);
   padding: 0.6rem 1rem;
+  box-shadow: var(--tile-bevel);
 }
 .me .name {
   font-size: 1.2rem;
@@ -487,7 +489,6 @@ onUnmounted(() => {
 }
 .clue-text {
   font-size: 1.2rem;
-  text-transform: uppercase;
   margin: 0.4em 0 0;
 }
 .timer {
@@ -505,7 +506,7 @@ onUnmounted(() => {
   display: grid;
   text-align: center;
   font-size: 2.4rem;
-  font-weight: 900;
+  font-weight: 800;
   padding: 1.4rem 1rem;
   border-radius: var(--radius);
   background: var(--panel-2);
@@ -518,10 +519,10 @@ onUnmounted(() => {
 }
 .answering.mine {
   background: var(--gold);
-  color: #1a1400;
+  color: var(--on-gold);
 }
 .answering.mine small {
-  color: #1a1400;
+  color: var(--on-gold);
 }
 .scores {
   margin-top: auto;
@@ -530,8 +531,8 @@ onUnmounted(() => {
   list-style: none;
   padding: 0;
   margin: 0;
-  font-size: 1.3rem;
-  text-transform: uppercase;
+  font-size: 1.5rem;
+  line-height: 1.3;
 }
 .react-row {
   display: flex;
